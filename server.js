@@ -1,9 +1,12 @@
-var Express = require("express");
-var Mongoclient = require("mongodb").MongoClient;
-var cors = require("cors");
+const Express = require("express");
+const cors = require("cors");
 const multer = require("multer");
-const fs = require("fs");
-const config = require("config");
+
+const Mongoclient = require("mongodb").MongoClient;
+const dotenv = require("dotenv");
+dotenv.config();
+
+const { uploadToS3, multerUploader } = require("./src/modules/uploadModules");
 
 const app = Express();
 const PORT = 3001;
@@ -27,7 +30,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-var CONNECTION_STRING = config.get("mongodbConfig.connection");
+var CONNECTION_STRING = process.env.MONGO_CONNECTION_STRING;
 var DATABASE_NAME = "productlistdb";
 var database;
 
@@ -73,19 +76,26 @@ app.delete("/api/products/delete/:id", (request, response) => {
   );
 });
 
-app.post("/api/products/uploadImage", multer().none(), (request, response) => {
-  const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-      cb(null, "public");
-    },
-    filename: function (req, file, cb) {
-      cb(null, file.filename + "-" + Date.now());
-    },
-  });
-  const upload = multer({ storage: storage });
-
-  let newPath = `public/images/uploads/${req.file.originalname}`;
-  fs.rename(req.file.path, newPath, () => {
-    request.json({ result: "image uploaded successful" });
-  });
-});
+//上傳圖片
+app.post(
+  "/api/products/uploadImages",
+  multerUploader.any("images"),
+  (req, res) => {
+    console.log("req.files", req);
+    if (req.files)
+      Promise.all(req.files.map((file) => uploadToS3(file)))
+        .then((data) => {
+          console.log("data", data);
+          res.json({
+            message: "上傳成功",
+            data: data,
+            imageUrls: data.map((d) => d.Location),
+          });
+        })
+        .catch((err) => {
+          console.log("err", err);
+          res.json({ message: "上傳失敗" });
+        });
+    else res.json({ message: "上傳失敗" });
+  }
+);
