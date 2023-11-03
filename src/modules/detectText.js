@@ -1,46 +1,74 @@
 const AWS = require("aws-sdk");
+const { uploadToS3 } = require("./uploadModules");
 require("dotenv").config();
-// AWS config
-const awsConfig = {
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION,
-};
 
 AWS.config.update({ region: process.env.AWS_REGION });
 
-const fileName = "test/1698805959430-testDetect.png";
-
 const client = new AWS.Rekognition();
-const params = {
-  Image: {
-    S3Object: {
-      Bucket: process.env.AWS_BUCKET_NAME,
-      Name: fileName,
-    },
-  },
-};
-client.detectText(params, function (err, response) {
-  if (err) {
-    console.log(err, err.stack); // handle error if an error occurred
-  } else {
-    console.log(`Detected Text for: ${fileName}`);
-    // console.log(response);
-    // response.TextDetections.forEach((label) => {
-    //   console.log(`Detected Text: ${label.DetectedText}`),
-    //     console.log(`Type: ${label.Type}`),
-    //     console.log(`ID: ${label.Id}`),
-    //     console.log(`Confidence: ${label.Confidence}`),
-    //     console.log(`Polygon: `);
-    //   console.log(label.Geometry.Polygon);
-    // });
 
-    response.TextDetections.map((label) =>
-      label.Confidence > 90 &&
-      label.Type === "LINE" &&
-      Number(label.DetectedText)
-        ? console.log(label.DetectedText, label.Confidence)
-        : null
-    );
-  }
-});
+const getDetectedNumbers = async (fileName) => {
+  return new Promise((resolve, reject) => {
+    const params = {
+      Image: {
+        S3Object: {
+          Bucket: process.env.AWS_BUCKET_NAME,
+          Name: fileName,
+        },
+      },
+    };
+    client.detectText(params, function (err, response) {
+      if (err) {
+        console.log(err, err.stack); // handle error if an error occurred
+        resolve([]);
+      } else {
+        console.log(`Detected Text for: ${fileName}`);
+        // console.log(response);
+        // response.TextDetections.forEach((label) => {
+        //   console.log(`Detected Text: ${label.DetectedText}`),
+        //     console.log(`Type: ${label.Type}`),
+        //     console.log(`ID: ${label.Id}`),
+        //     console.log(`Confidence: ${label.Confidence}`),
+        //     console.log(`Polygon: `);
+        //   console.log(label.Geometry.Polygon);
+        // });
+        try {
+          let detectedNumbers = [];
+          response.TextDetections.map((label) =>
+            label.Confidence > 90 &&
+            label.Type === "LINE" &&
+            Number(label.DetectedText)
+              ? detectedNumbers.push({
+                  DetectedText: label.DetectedText,
+                  Confidence: label.Confidence,
+                })
+              : null
+          );
+          console.log("getDetectedNumbers", detectedNumbers);
+          resolve(detectedNumbers || []);
+        } catch (error) {
+          console.log(error);
+          resolve([]);
+        }
+      }
+    });
+  });
+};
+
+const uploadToS3andDetectText = (file) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const result = await uploadToS3(file);
+      const detectedNumbers = await getDetectedNumbers(result.Key);
+
+      resolve({
+        originImageUrl: result.Location,
+        detectedNumbers,
+        fileName: result.Key,
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
+module.exports = { uploadToS3andDetectText };

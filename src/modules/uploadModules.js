@@ -10,14 +10,21 @@ const awsConfig = {
 
 const s3 = new AWS.S3(awsConfig);
 
-const uploadToS3 = (file) => {
-  const params = {
-    Bucket: process.env.AWS_BUCKET_NAME,
-    Key: "test/" + Date.now() + "-" + file.originalname,
-    Body: file.buffer,
-    ContentType: file.mimetype,
-  };
-  return s3.upload(params).promise();
+const uploadToS3 = async (file) => {
+  return new Promise((resolve, reject) => {
+    const params = {
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: "images/" + Date.now() + "-" + file.originalname,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+    };
+    s3.upload(params, (error, data) => {
+      if (error) {
+        reject(error);
+      }
+      resolve(data);
+    });
+  });
 };
 
 const multerUploader = multer({
