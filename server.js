@@ -3,7 +3,9 @@ const cors = require("cors");
 const multer = require("multer");
 const UUID = require("uuid");
 
-const Mongoclient = require("mongodb").MongoClient;
+const userRouter = require("./src/routes/user");
+
+const mongoUtil = require("./src/database/mongoUtil");
 const dotenv = require("dotenv");
 dotenv.config();
 
@@ -32,22 +34,21 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.use("/user", userRouter);
 
-var CONNECTION_STRING = process.env.MONGO_CONNECTION_STRING;
-var DATABASE_NAME = "productlistdb";
-var database;
+var db;
 
-app.listen(PORT, () => {
-  Mongoclient.connect(CONNECTION_STRING, (error, client) => {
-    database = client.db(DATABASE_NAME);
-    console.log("Connected to `" + DATABASE_NAME + "`!");
+mongoUtil.connectToServer(function (err, client) {
+  if (err) console.log(err);
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+    db = mongoUtil.getDb();
   });
 });
 
 //localhost:3000/api/products 可以看到 productlistcollection 所有資料
 app.get(apiRoot + "/products/getAll", (request, response) => {
-  database
-    .collection("productlistcollection")
+  db.collection("productlistcollection")
     .find({})
     .toArray((error, result) => {
       response.send(result);
@@ -55,20 +56,18 @@ app.get(apiRoot + "/products/getAll", (request, response) => {
 });
 
 app.post("/api/products/add", multer().none(), (request, response) => {
-  database
-    .collection("productlistcollection")
-    .count({}, function (error, numOfDocs) {
-      database.collection("productlistcollection").insertOne({
-        id: (numOfDocs + 1).toString(),
-        name: request.body?.name,
-      });
-      console.log("add-error", error);
-      response.json({ message: "新增成功" });
+  db.collection("productlistcollection").count({}, function (error, numOfDocs) {
+    db.collection("productlistcollection").insertOne({
+      id: (numOfDocs + 1).toString(),
+      name: request.body?.name,
     });
+    console.log("add-error", error);
+    response.json({ message: "新增成功" });
+  });
 });
 
 app.delete("/api/products/delete/:id", (request, response) => {
-  database.collection("productlistcollection").deleteOne(
+  db.collection("productlistcollection").deleteOne(
     {
       id: request.params.id,
     },
@@ -78,20 +77,6 @@ app.delete("/api/products/delete/:id", (request, response) => {
     }
   );
 });
-
-//data format
-
-const imageData = {
-  id: "eRFRFWEFEG13413r", //自動生成 uuid()
-  url: "https://photo-place-buckets.s3.ap-northeast-1.amazonaws.com/test/12385/1630545644117-1698828609267-testDetect.png",
-  watermarkedUrl:
-    "https://photo-place-buckets.s3.ap-northeast-1.amazonaws.com/test/12385/1630545644117-1698828609267-testDetect.png",
-
-  event_id: "1",
-  price: 100,
-  date: "2021-09-02T14:40:44.000Z",
-  bibs: [12385, 6038],
-};
 
 //列表頁回傳 根據 event_id 回傳該 path 底下所有圖片
 const listPageData = {
@@ -113,12 +98,12 @@ const listPageData = {
 // mongoDB path
 //{host}/images/{event_id}/{detected_Number}|common/image.jpg
 
-//查詢圖片 by detected_Number
-app.get("/api/products/getByDetectedNumber/:detectedNumber", (req, res) => {
-  const detectedNumber = req.params.detectedNumber;
-  database
-    .collection(`productlistcollection/${detectedNumber}`)
+//查詢圖片 by event_id
+app.get("/api/products/getByEventId/:eventId", (req, res) => {
+  const eventId = req.params.eventId;
+  db.collection(`imagecollection/${eventId}`)
     .find({})
+    .project({ watermarkedUrl: 1, bibs: 1, id: 1, filename: 1 })
     .toArray((error, result) => {
       res.send(result);
     });
@@ -192,8 +177,7 @@ app.get("/api/images/getByBidAndEventId/:eventId/:bib", (req, res) => {
   const bid = req.params.bib;
   const eventId = req.params.eventId;
 
-  database
-    .collection(`imagecollection/${eventId}`)
+  db.collection(`imagecollection/${eventId}`)
     .find({ path: bid })
     .project({ watermarkedUrl: 1, bibs: 1, id: 1, filename: 1 })
     .toArray((error, result) => {
@@ -205,8 +189,7 @@ app.get("/api/images/getByBidAndEventId/:eventId/:bib", (req, res) => {
 app.get("/api/images/getByEventId/:eventId", (req, res) => {
   const eventId = req.params.eventId;
 
-  database
-    .collection(`imagecollection/${eventId}`)
+  db.collection(`imagecollection/${eventId}`)
     .find({})
     .toArray((error, result) => {
       res.send(result);
@@ -215,8 +198,7 @@ app.get("/api/images/getByEventId/:eventId", (req, res) => {
 
 //查詢 events by year
 app.get("/api/events", (req, res) => {
-  database
-    .collection("eventlistcollection")
+  db.collection("eventlistcollection")
     .find({})
     .toArray((error, result) => {
       res.send(result);
@@ -225,8 +207,7 @@ app.get("/api/events", (req, res) => {
 
 //取得活動下拉選單
 app.get("/api/events/getEventOptions", (req, res) => {
-  database
-    .collection("eventlistcollection")
+  db.collection("eventlistcollection")
     .find({})
     .project({ eventName: 1, id: 1, date: 1 })
     .toArray((error, result) => {
@@ -243,8 +224,7 @@ app.post("/api/events/add", multerUploader.single("file"), async (req, res) => {
     coverImg: req.body.coverImg,
   };
 
-  database
-    .collection("eventlistcollection")
+  db.collection("eventlistcollection")
     .insertOne(eventData)
     .then(() => res.json({ message: "新增成功" }))
     .catch((error) => {
