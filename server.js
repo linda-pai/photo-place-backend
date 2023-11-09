@@ -2,8 +2,11 @@ const Express = require("express");
 const cors = require("cors");
 const multer = require("multer");
 const UUID = require("uuid");
+const emailSender = require("./src/modules/emailSender");
+const session = require("express-session");
 
 const userRouter = require("./src/routes/user");
+const authRouter = require("./src/routes/auth");
 
 const mongoUtil = require("./src/database/mongoUtil");
 const dotenv = require("dotenv");
@@ -33,8 +36,18 @@ const corsOptions = {
   oprtionsSuccessStatus: 200,
 };
 
+app.use(
+  session({
+    secret: "keyboard cat",
+    resave: false,
+    saveUninitialized: true,
+    cookie: { secure: false }, //TODO: 研究：正式環境要改成 true
+  })
+);
+
 app.use(cors(corsOptions));
 app.use("/user", userRouter);
+app.use("/auth", authRouter);
 
 var db;
 
@@ -302,8 +315,21 @@ app.post(
 
 //建立訂單
 app.post("/api/orders/add", async (req, res) => {
+  const user = await db
+    .collection("usercollection")
+    .find({ token: req.body.orderBy })
+    .project({ token: 1, email: 1, name: 1 })
+    .toArray();
+
+  //寄信
+  emailSender({
+    email: user[0].email,
+    subject: "攝影小隊 - 訂單成立通知",
+    text: `親愛的 ${user[0].name} 您好，您的訂單已成立，請至以下網址付款：http://localhost:3000/order/${req.body.orderId}`,
+  });
+
   const orderData = {
-    id: "ord-" + UUID.v4().substring(0, 12),
+    orderId: "ord-" + UUID.v4().substring(0, 12),
     ...req.body,
     createAt: new Date(),
     paidAt: null,
@@ -329,10 +355,23 @@ app.get("/api/orders/:orderId", (req, res) => {
 });
 
 //付款 - 更新訂單 paidAt
-app.put("/api/orders/update/:id", async (req, res) => {
+app.put("/api/orders/update/:orderId", async (req, res) => {
+  const user = await db
+    .collection("usercollection")
+    .find({ token: req.body.orderBy })
+    .project({ token: 1, email: 1, name: 1 })
+    .toArray();
+
+  //寄信
+  emailSender({
+    email: user[0].email,
+    subject: "攝影小隊 - 訂單付款確認通知",
+    text: `親愛的 ${user[0].name} 您好，您的訂單已付款成功，請至以下網址下載：http://localhost:3000/order/${req.params.orderId}`,
+  });
+
   db.collection("ordercollection")
     .updateOne(
-      { id: req.params.id },
+      { id: req.params.orderId },
       {
         $set: {
           paidAt: new Date(),
