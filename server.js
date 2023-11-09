@@ -98,17 +98,6 @@ const listPageData = {
 // mongoDB path
 //{host}/images/{event_id}/{detected_Number}|common/image.jpg
 
-//查詢圖片 by event_id
-app.get("/api/products/getByEventId/:eventId", (req, res) => {
-  const eventId = req.params.eventId;
-  db.collection(`imagecollection/${eventId}`)
-    .find({})
-    .project({ watermarkedUrl: 1, bibs: 1, id: 1, filename: 1 })
-    .toArray((error, result) => {
-      res.send(result);
-    });
-});
-
 //上傳圖片
 app.post(
   "/api/images/uploadAndDetectText",
@@ -125,14 +114,16 @@ app.post(
           const { originImageUrl, detectedNumbers, fileName } = response[0];
           const { watermarkedUrl } = response[1];
           const eventId = req.body.eventId;
+          const author = req.body.author;
 
           const data = {
-            id: UUID.v4(),
+            id: "img-" + UUID.v4(),
+            eventId,
             url: originImageUrl,
-            // bibs: detectedNumbers,
             watermarkedUrl,
             fileName,
-            eventId,
+            author,
+            price: 150,
           };
           //依照 eventId 傳到不同的 collection
           // 1. 檢查是否有該 path 2. 沒有 -> 新增到 "common" 這個 path 3. 有 -> push
@@ -143,11 +134,11 @@ app.post(
                 : [{ DetectedText: "common" }];
             paths.map(({ DetectedText }) => {
               const path = DetectedText;
-              database.collection(`imagecollection/${eventId}`).updateOne(
+              db.collection(`imagecollection/${eventId}`).updateOne(
                 { path },
                 {
                   $push: {
-                    ...data,
+                    images: data,
                   },
                 },
                 { upsert: true }
@@ -179,9 +170,15 @@ app.get("/api/images/getByBidAndEventId/:eventId/:bib", (req, res) => {
 
   db.collection(`imagecollection/${eventId}`)
     .find({ path: bid })
-    .project({ watermarkedUrl: 1, bibs: 1, id: 1, filename: 1 })
     .toArray((error, result) => {
-      res.send(result);
+      const images = result
+        .map((item) => {
+          console.log("item", item);
+          item.images.map((image) => delete image.url);
+          return item.images;
+        })
+        .flat();
+      res.send(images);
     });
 });
 
@@ -192,9 +189,29 @@ app.get("/api/images/getByEventId/:eventId", (req, res) => {
   db.collection(`imagecollection/${eventId}`)
     .find({})
     .toArray((error, result) => {
-      res.send(result);
+      const images = result
+        .map((item) => {
+          console.log("item", item);
+          delete item.url;
+          return item;
+        })
+        .flat();
+      res.send(images);
     });
 });
+
+//確認已付款 - 查詢圖片 by eventId & verifyCode
+// app.get("/api/images/getByEventId/:eventId/:verifyCode", (req, res) => {
+//   const eventId = req.params.eventId;
+//   const verifyCode = req.params.verifyCode;
+
+//   db.collection(`imagecollection/${eventId}`)
+//     .find({})
+//     .toArray((error, result) => {
+//       const images = result.map((item) => item.images).flat();
+//       res.send(images);
+//     });
+// });
 
 //查詢 events by year
 app.get("/api/events", (req, res) => {
@@ -215,13 +232,49 @@ app.get("/api/events/getEventOptions", (req, res) => {
     });
 });
 
+//取得圖片 by ids
+app.get("/api/images/getByIds/:eventId/:ids", (req, res) => {
+  const eventId = req.params.eventId;
+  const ids = req.params.ids;
+
+  const testconnection = db.collection(`imagecollection/${eventId}`);
+
+  testconnection
+    .aggregate([
+      {
+        $unwind: "$images",
+      },
+      {
+        $match: {
+          "images.id": { $in: ids.split(",") },
+        },
+      },
+      {
+        $group: {
+          _id: "$_id",
+          images: {
+            $push: {
+              id: "$images.id",
+              watermarkedUrl: "$images.watermarkedUrl",
+              eventId: "$images.eventId",
+              price: "$images.price",
+            },
+          },
+        },
+      },
+    ])
+    .toArray((error, result) => {
+      console.log("result", result);
+      res.send(result);
+    });
+});
+
 //新增 event
 app.post("/api/events/add", multerUploader.single("file"), async (req, res) => {
   const eventData = {
-    id: UUID.v4().substring(0, 8),
-    eventName: req.body.eventName,
-    date: req.body.date,
-    coverImg: req.body.coverImg,
+    id: "evt-" + UUID.v4().substring(0, 12),
+    ...req.body,
+    isShow: false, //TODO: 預設不顯示
   };
 
   db.collection("eventlistcollection")
@@ -246,3 +299,57 @@ app.post(
     });
   }
 );
+
+//建立訂單
+app.post("/api/orders/add", async (req, res) => {
+  const orderData = {
+    id: "ord-" + UUID.v4().substring(0, 12),
+    ...req.body,
+    createAt: new Date(),
+    paidAt: null,
+  };
+
+  db.collection("ordercollection")
+    .insertOne(orderData)
+    .then(() => res.json({ message: "新增成功" }))
+    .catch((error) => {
+      console.log("add-error", error);
+    });
+});
+
+//查詢訂單
+app.get("/api/orders/:orderId", (req, res) => {
+  const orderId = req.params.orderId;
+
+  db.collection("ordercollection")
+    .find({ id: orderId })
+    .toArray((error, result) => {
+      res.send(result);
+    });
+});
+
+//付款 - 更新訂單 paidAt
+app.put("/api/orders/update/:id", async (req, res) => {
+  db.collection("ordercollection")
+    .updateOne(
+      { id: req.params.id },
+      {
+        $set: {
+          paidAt: new Date(),
+        },
+      }
+    )
+    .then(() => res.json({ message: "更新成功" }))
+    .catch((error) => {
+      console.log("update-error", error);
+    });
+});
+
+//訂單列表
+app.get("/api/orders", (req, res) => {
+  db.collection("ordercollection")
+    .find({})
+    .toArray((error, result) => {
+      res.send(result);
+    });
+});
