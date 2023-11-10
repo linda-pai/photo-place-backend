@@ -58,12 +58,12 @@ const uploadToS3andDetectText = (file) => {
   return new Promise(async (resolve, reject) => {
     try {
       const result = await uploadToS3(file);
-      const detectedNumbers = await getDetectedNumbers(result.Key);
+      const detectedNumbers = await getDetectedNumbers(result.key);
 
       resolve({
         originImageUrl: result.Location,
         detectedNumbers,
-        fileName: result.Key,
+        fileName: result.key,
       });
     } catch (error) {
       reject(error);

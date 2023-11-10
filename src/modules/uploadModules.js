@@ -1,5 +1,6 @@
 const AWS = require("aws-sdk");
 const multer = require("multer");
+const { sha256 } = require("js-sha256");
 
 // AWS config
 const awsConfig = {
@@ -12,9 +13,14 @@ const s3 = new AWS.S3(awsConfig);
 
 const uploadToS3 = async (file) => {
   return new Promise((resolve, reject) => {
+    const key =
+      "images/" +
+      sha256(file.originalname + new Date().toString()) +
+      "-" +
+      file.originalname;
     const params = {
       Bucket: process.env.AWS_BUCKET_NAME,
-      Key: "images/" + Date.now() + "-" + file.originalname,
+      Key: key,
       Body: file.buffer,
       ContentType: file.mimetype,
     };
@@ -22,7 +28,7 @@ const uploadToS3 = async (file) => {
       if (error) {
         reject(error);
       }
-      resolve(data);
+      resolve({ ...data, key });
     });
   });
 };
