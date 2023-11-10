@@ -317,8 +317,8 @@ app.post(
 app.post("/api/orders/add", async (req, res) => {
   const user = await db
     .collection("usercollection")
-    .find({ token: req.body.orderBy })
-    .project({ token: 1, email: 1, name: 1 })
+    .find({ userId: req.body.orderBy })
+    .project({ token: 1, email: 1, name: 1, userId: 1 })
     .toArray();
 
   //寄信
@@ -343,12 +343,23 @@ app.post("/api/orders/add", async (req, res) => {
     });
 });
 
-//查詢訂單
+//查詢訂單 by orderId
 app.get("/api/orders/:orderId", (req, res) => {
   const orderId = req.params.orderId;
 
   db.collection("ordercollection")
     .find({ id: orderId })
+    .toArray((error, result) => {
+      res.send(result);
+    });
+});
+
+//查詢訂單 by orderBy
+app.get("/api/orders/getByUser/:orderBy", (req, res) => {
+  const orderBy = req.params.orderBy;
+
+  db.collection("ordercollection")
+    .find({ orderBy })
     .toArray((error, result) => {
       res.send(result);
     });
