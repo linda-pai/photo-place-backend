@@ -111,6 +111,45 @@ const listPageData = {
 // mongoDB path
 //{host}/images/{event_id}/{detected_Number}|common/image.jpg
 
+//TODO:有 bug 有時候會連不到 db
+app.post("/user/createUser", async (req, res) => {
+  const userId = "usr-" + UUID.v4().substring(0, 12);
+  const user = {
+    userId,
+    role: "user", //TODO: 預設為 user
+    ...req.body,
+  };
+  //check if user already exists
+  const userExist = await db
+    .collection("usercollection")
+    .find({ email: user.email })
+    .toArray();
+
+  console.log("userExist", userExist);
+
+  if (userExist.length > 0) {
+    db.collection("usercollection").updateOne(
+      { email: user.email },
+      { $set: { token: user.token } }
+    );
+    return res.status(200).json({ userId });
+  } else {
+    db.collection("usercollection").insertOne(user);
+    return res.status(200).json({ userId });
+  }
+});
+
+app.get("/user/getUserInfo/:token", async (req, res) => {
+  await db
+    .collection("usercollection")
+    .find({ token: req.params.token })
+    .project({ token: 1, email: 1, name: 1, role: 1 })
+    .toArray((error, result) => {
+      const user = result[0];
+      res.send(user);
+    });
+});
+
 //上傳圖片
 app.post(
   "/api/images/uploadAndDetectText",
@@ -186,7 +225,6 @@ app.get("/api/images/getByBidAndEventId/:eventId/:bib", (req, res) => {
     .toArray((error, result) => {
       const images = result
         .map((item) => {
-          console.log("item", item);
           item.images.map((image) => delete image.url);
           return item.images;
         })
@@ -204,7 +242,6 @@ app.get("/api/images/getByEventId/:eventId", (req, res) => {
     .toArray((error, result) => {
       const images = result
         .map((item) => {
-          console.log("item", item);
           delete item.url;
           return item;
         })
@@ -276,10 +313,7 @@ app.get("/api/images/getByIds/:eventId/:ids", (req, res) => {
         },
       },
     ])
-    .toArray((error, result) => {
-      console.log("result", result);
-      res.send(result);
-    });
+    .toArray((error, result) => res.send(result));
 });
 
 //新增 event
@@ -304,30 +338,12 @@ app.post(
   multerUploader.single("file"),
   async (req, res) => {
     const file = req.file;
-    console.log("filefile", file);
-
-    uploadToS3(file).then((result) => {
-      console.log("result", result);
-      res.json(result);
-    });
+    uploadToS3(file).then((result) => res.json(result));
   }
 );
 
 //建立訂單
-app.post("/api/orders/add", async (req, res) => {
-  const user = await db
-    .collection("usercollection")
-    .find({ userId: req.body.orderBy })
-    .project({ token: 1, email: 1, name: 1, userId: 1 })
-    .toArray();
-
-  //寄信
-  emailSender({
-    email: user[0].email,
-    subject: "攝影小隊 - 訂單成立通知",
-    text: `親愛的 ${user[0].name} 您好，您的訂單已成立，請至以下網址付款：http://localhost:3000/order/${req.body.orderId}`,
-  });
-
+app.post("/api/orders/add", (req, res) => {
   const orderData = {
     orderId: "ord-" + UUID.v4().substring(0, 12),
     ...req.body,
@@ -337,9 +353,23 @@ app.post("/api/orders/add", async (req, res) => {
 
   db.collection("ordercollection")
     .insertOne(orderData)
-    .then(() => res.json({ message: "新增成功" }))
+    .then(async () => {
+      const user = await db
+        .collection("usercollection")
+        .find({ userId: req.body.orderBy })
+        .project({ token: 1, email: 1, name: 1, userId: 1 })
+        .toArray();
+      //寄信
+      await emailSender({
+        email: user[0].email,
+        subject: "攝影小隊 - 訂單成立通知",
+        text: `親愛的 ${user[0].name} 您好，您的訂單已成立，請至以下網址付款：http://localhost:3000/order/${req.body.orderId}`,
+      });
+      res.json({ message: "新增成功" });
+    })
     .catch((error) => {
       console.log("add-error", error);
+      return res.json({ message: "新增失敗" });
     });
 });
 
@@ -367,31 +397,34 @@ app.get("/api/orders/getByUser/:orderBy", (req, res) => {
 
 //付款 - 更新訂單 paidAt
 app.put("/api/orders/update/:orderId", async (req, res) => {
-  const user = await db
-    .collection("usercollection")
-    .find({ token: req.body.orderBy })
-    .project({ token: 1, email: 1, name: 1 })
-    .toArray();
-
-  //寄信
-  emailSender({
-    email: user[0].email,
-    subject: "攝影小隊 - 訂單付款確認通知",
-    text: `親愛的 ${user[0].name} 您好，您的訂單已付款成功，請至以下網址下載：http://localhost:3000/order/${req.params.orderId}`,
-  });
-
   db.collection("ordercollection")
     .updateOne(
-      { id: req.params.orderId },
+      { orderId: req.params.orderId },
       {
         $set: {
           paidAt: new Date(),
         },
       }
     )
-    .then(() => res.json({ message: "更新成功" }))
+    .then(async () => {
+      const user = await db
+        .collection("usercollection")
+        .find({ userId: req.body.orderBy })
+        .project({ token: 1, email: 1, name: 1, userId: 1 })
+        .toArray();
+
+      //寄信
+      await emailSender({
+        email: user[0].email,
+        subject: "攝影小隊 - 訂單付款成功通知",
+        text: `親愛的 ${user[0].name} 您好，您的訂單已付款成功，請至以下網址下載：http://localhost:3000/order/${req.body.orderId}`,
+      });
+      res.json({ message: "更新成功" });
+    })
+
     .catch((error) => {
       console.log("update-error", error);
+      return res.json({ message: "更新失敗" });
     });
 });
 

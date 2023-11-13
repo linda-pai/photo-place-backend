@@ -20,7 +20,6 @@ async function compositeImages(file) {
 }
 
 const getWatermarkedImageUrl = async (originImage) => {
-  console.log("originImage", originImage);
   return new Promise(async (resolve, reject) => {
     try {
       const watermarkedImage = await compositeImages(originImage);

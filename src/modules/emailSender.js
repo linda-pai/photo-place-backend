@@ -21,15 +21,7 @@ const emailSender = (data) => {
     // html: "<h1>這是信件的內容 test</h1>",
   };
 
-  transporter.sendMail(mailOptions, (err, info) => {
-    if (err) {
-      console.error(err);
-      res.status(500).send("Error sending email");
-    } else {
-      console.log(info);
-      res.send("Email sent");
-    }
-  });
+  return transporter.sendMail(mailOptions);
 };
 
 module.exports = emailSender;
