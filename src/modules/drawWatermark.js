@@ -8,18 +8,20 @@ async function compositeImages(file) {
       .jpeg({ quality: 20 }) //壓縮
       .composite([
         {
-          input: "src/assets/watermark_source_200*111.png", //浮水印圖片
+          input: "src/assets/photo-pacer-810_410.png", //浮水印圖片
           tile: true, //平鋪
         },
       ])
-      .toFormat("jpg", { mozjpeg: true }) //
+      .withMetadata()
       .toBuffer();
   } catch (error) {
     console.log(error);
+    throw new Error(error);
   }
 }
 
 const getWatermarkedImageUrl = async (originImage) => {
+  console.log("originImage", originImage);
   return new Promise(async (resolve, reject) => {
     try {
       const watermarkedImage = await compositeImages(originImage);
