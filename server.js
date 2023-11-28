@@ -358,6 +358,7 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
         html: `
         <div>
         <img src="https://photo-place-buckets.s3.ap-northeast-1.amazonaws.com/images/386b543f2536bfa551aacb5838ec21b87fae98b299224cd20bd10fa6f8f62587-photo-pacer-logo.png" width="50%">
+        <div style={{ margin:0 auto }}>
         <h2> Hi ${user[0].name}，您的訂單已成立，</h2> 
         <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
         <p> 至以下網址查看訂單明細：${process.env.CLIENT_DOMAIN}/user/orders</p>
@@ -369,10 +370,11 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
         )} </p> 
         <p>----------------------------------------------------------------</p> 
         <p>感謝您的購買，祝您有美好的一天！</p> 
-        <p>如有任何問題歡迎聯繫我們！</p>
+        <p>如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
         <p>聯絡信箱： photopacer@gmail.com</p>
         <p>官方Line：@photopacer</p>
-        <p>PHOTO PACER 攝影小隊 </p> 
+        <p>📷 PHOTO PACER 攝影小隊 </p> 
+        </div>
         </div>
         `,
       });
@@ -436,10 +438,10 @@ app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
         <p> 請至以下網址下載照片：${process.env.CLIENT_DOMAIN}/user/orders</p>
         <p> ----------------------------------------------------------------</p> 
         <p>感謝您的購買，祝您有美好的一天！</p> 
-        <p>如有任何問題歡迎聯繫我們！</p>
+        <p>⬇️⬇️ 如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
         <p>聯絡信箱： photopacer@gmail.com</p>
         <p>官方Line：@photopacer</p>
-        <p>PHOTO PACER 攝影小隊 </p> 
+        <p>📷 PHOTO PACER 攝影小隊 </p> 
         </div>
         `,
       });
