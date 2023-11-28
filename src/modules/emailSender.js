@@ -17,7 +17,7 @@ const emailSender = (data) => {
     from: process.env.MAILER_FROM_USER + "攝影小隊",
     to: data.email,
     subject: data.subject,
-    text: data.text,
+    html: data.html,
     // html: "<h1>這是信件的內容 test</h1>",
   };
 

@@ -3,10 +3,10 @@ const cors = require("cors");
 const UUID = require("uuid");
 const emailSender = require("./src/modules/emailSender");
 const session = require("cookie-session");
+const dayjs = require("dayjs");
 const { removeDuplicate } = require("./src/utils/removeDuplicate");
 
 const userRouter = require("./src/routes/user");
-const authRouter = require("./src/routes/auth");
 
 const mongoUtil = require("./src/database/mongoUtil");
 const dotenv = require("dotenv");
@@ -355,7 +355,26 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
       await emailSender({
         email: user[0].email,
         subject: "攝影小隊 - 訂單成立通知",
-        text: `親愛的 ${user[0].name} 您好，您的訂單已成立，請至以下網址查看訂單：${process.env.CLIENT_DOMAIN}/user/orders`,
+        html: `
+        <div>
+        <img src="https://photo-place-buckets.s3.ap-northeast-1.amazonaws.com/images/386b543f2536bfa551aacb5838ec21b87fae98b299224cd20bd10fa6f8f62587-photo-pacer-logo.png" width="50%">
+        <h2> Hi ${user[0].name}，您的訂單已成立，</h2> 
+        <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
+        <p> 至以下網址查看訂單明細：${process.env.CLIENT_DOMAIN}/user/orders</p>
+        <p> ----------------------------------------------------------------</p> 
+        <p>訂單編號：${orderData.orderId} </p> 
+        <p>訂單金額：TWD ${orderData.totalAmount}</p>  
+        <p>訂單時間：${dayjs(orderData.createAt).format(
+          "YYYY-MM-DD HH:mm:ss"
+        )} </p> 
+        <p>----------------------------------------------------------------</p> 
+        <p>感謝您的購買，祝您有美好的一天！</p> 
+        <p>如有任何問題歡迎聯繫我們！</p>
+        <p>聯絡信箱： photopacer@gmail.com</p>
+        <p>官方Line：@photopacer</p>
+        <p>PHOTO PACER 攝影小隊 </p> 
+        </div>
+        `,
       });
       res.json({ message: "新增成功" });
     })
@@ -410,7 +429,19 @@ app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
       await emailSender({
         email: user[0].email,
         subject: "攝影小隊 - 訂單付款成功通知",
-        text: `親愛的 ${user[0].name} 您好，訂單已付款成功，感謝您的購買，請至以下網址下載：${process.env.CLIENT_DOMAIN}/user/orders`,
+        html: `
+        <div>
+        <img src="https://photo-place-buckets.s3.ap-northeast-1.amazonaws.com/images/386b543f2536bfa551aacb5838ec21b87fae98b299224cd20bd10fa6f8f62587-photo-pacer-logo.png" width="50%">
+        <h2> Hi ${user[0].name}，您的訂單已付款成功，</h2> 
+        <p> 請至以下網址下載照片：${process.env.CLIENT_DOMAIN}/user/orders</p>
+        <p> ----------------------------------------------------------------</p> 
+        <p>感謝您的購買，祝您有美好的一天！</p> 
+        <p>如有任何問題歡迎聯繫我們！</p>
+        <p>聯絡信箱： photopacer@gmail.com</p>
+        <p>官方Line：@photopacer</p>
+        <p>PHOTO PACER 攝影小隊 </p> 
+        </div>
+        `,
       });
       res.json({ message: "更新成功" });
     })
