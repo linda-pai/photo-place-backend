@@ -1,9 +1,9 @@
 const Express = require("express");
 const cors = require("cors");
-const multer = require("multer");
 const UUID = require("uuid");
 const emailSender = require("./src/modules/emailSender");
-const session = require("express-session");
+const session = require("cookie-session");
+const { removeDuplicate } = require("./src/utils/removeDuplicate");
 
 const userRouter = require("./src/routes/user");
 const authRouter = require("./src/routes/auth");
@@ -24,7 +24,7 @@ const bodyParser = require("body-parser");
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
-const whitelist = ["http://localhost:3000", "http://localhost:3001"];
+const whitelist = [`${process.env.CLIENT_DOMAIN}`];
 const corsOptions = {
   origin: (origin, callback) => {
     if (whitelist.indexOf(origin) !== -1 || !origin) {
@@ -47,7 +47,6 @@ app.use(
 
 app.use(cors(corsOptions));
 app.use("/user", userRouter);
-app.use("/auth", authRouter);
 
 var db;
 
@@ -59,60 +58,11 @@ mongoUtil.connectToServer(function (err, client) {
   });
 });
 
-//localhost:3000/api/products 可以看到 productlistcollection 所有資料
-app.get(apiRoot + "/products/getAll", (request, response) => {
-  db.collection("productlistcollection")
-    .find({})
-    .toArray((error, result) => {
-      response.send(result);
-    });
-});
-
-app.post("/api/products/add", multer().none(), (request, response) => {
-  db.collection("productlistcollection").count({}, function (error, numOfDocs) {
-    db.collection("productlistcollection").insertOne({
-      id: (numOfDocs + 1).toString(),
-      name: request.body?.name,
-    });
-    console.log("add-error", error);
-    response.json({ message: "新增成功" });
-  });
-});
-
-app.delete("/api/products/delete/:id", (request, response) => {
-  db.collection("productlistcollection").deleteOne(
-    {
-      id: request.params.id,
-    },
-    function (error, result) {
-      console.log("delete-error", error);
-      response.json({ message: "刪除成功" });
-    }
-  );
-});
-
-//列表頁回傳 根據 event_id 回傳該 path 底下所有圖片
-const listPageData = {
-  listPageData: [
-    {
-      id: "eRFRFWEFEG13413r",
-      event_id: "1",
-      watermarkedUrl:
-        "https://photo-place-buckets.s3.ap-northeast-1.amazonaws.com/test/1630545644117-1698828609267-testDetect.png",
-      price: 100,
-      date: "2021-09-02T14:40:44.000Z",
-    },
-  ],
-  currentPage: 1,
-  totalPage: 10,
-  totalData: 100,
-};
-
 // mongoDB path
 //{host}/images/{event_id}/{detected_Number}|common/image.jpg
 
 //TODO:有 bug 有時候會連不到 db
-app.post("/user/createUser", async (req, res) => {
+app.post(`${apiRoot}/user/createUser`, async (req, res) => {
   const userId = "usr-" + UUID.v4().substring(0, 12);
   const user = {
     userId,
@@ -139,7 +89,7 @@ app.post("/user/createUser", async (req, res) => {
   }
 });
 
-app.get("/user/getUserInfo/:token", async (req, res) => {
+app.get(`${apiRoot}/user/getUserInfo/:token`, async (req, res) => {
   await db
     .collection("usercollection")
     .find({ token: req.params.token })
@@ -152,7 +102,7 @@ app.get("/user/getUserInfo/:token", async (req, res) => {
 
 //上傳圖片
 app.post(
-  "/api/images/uploadAndDetectText",
+  `${apiRoot}/images/uploadAndDetectText`,
   multerUploader.single("file"),
   async (req, res) => {
     //取得 lastModified from req.file
@@ -166,16 +116,14 @@ app.post(
           const { originImageUrl, detectedNumbers, fileName } = response[0];
           const { watermarkedUrl } = response[1];
           const eventId = req.body.eventId;
-          const author = req.body.author;
 
           const data = {
             id: "img-" + UUID.v4(),
-            eventId,
             url: originImageUrl,
             watermarkedUrl,
             fileName,
-            author,
             price: 150,
+            ...req.body,
           };
           //依照 eventId 傳到不同的 collection
           // 1. 檢查是否有該 path 2. 沒有 -> 新增到 "common" 這個 path 3. 有 -> push
@@ -198,6 +146,7 @@ app.post(
             });
           } catch (error) {
             console.log(error);
+            res.json({ message: "新增失敗" });
           }
 
           res.status(200).json({
@@ -216,12 +165,12 @@ app.post(
   }
 );
 //查詢圖片 by 號碼布 & event_id
-app.get("/api/images/getByBidAndEventId/:eventId/:bib", (req, res) => {
-  const bid = req.params.bib;
+app.get(`${apiRoot}/images/getByBidAndEventId/:eventId/:bib`, (req, res) => {
+  const bid = Number(req.params.bib);
   const eventId = req.params.eventId;
 
   db.collection(`imagecollection/${eventId}`)
-    .find({ path: bid })
+    .find({ path: new RegExp(".*" + bid + ".*") })
     .toArray((error, result) => {
       const images = result
         .map((item) => {
@@ -229,51 +178,87 @@ app.get("/api/images/getByBidAndEventId/:eventId/:bib", (req, res) => {
           return item.images;
         })
         .flat();
-      res.send(images);
+
+      const output = removeDuplicate(images);
+
+      res.send(output);
     });
 });
 
 //查詢圖片 by event_id
-app.get("/api/images/getByEventId/:eventId", (req, res) => {
+app.get(`${apiRoot}/images/getByEventId/:eventId`, (req, res) => {
   const eventId = req.params.eventId;
 
   db.collection(`imagecollection/${eventId}`)
+    //remove duplicate by images.id
     .find({})
+    //.skip(10) //TODO: 這邊要改成分頁
+    .limit(100)
     .toArray((error, result) => {
-      const images = result
-        .map((item) => {
-          delete item.url;
-          return item;
-        })
-        .flat();
-      res.send(images);
+      const newObj = result.map((item) => {
+        const images = item.images.map((image) => {
+          delete image.url;
+          return image;
+        });
+        return { path: item.path, images };
+      });
+
+      const flattenData = newObj.map((item) => item.images).flat();
+
+      const output = removeDuplicate(flattenData);
+
+      res.send(output);
     });
 });
 
-//確認已付款 - 查詢圖片 by eventId & verifyCode
-// app.get("/api/images/getByEventId/:eventId/:verifyCode", (req, res) => {
-//   const eventId = req.params.eventId;
-//   const verifyCode = req.params.verifyCode;
+//check if is paid
 
-//   db.collection(`imagecollection/${eventId}`)
-//     .find({})
-//     .toArray((error, result) => {
-//       const images = result.map((item) => item.images).flat();
-//       res.send(images);
-//     });
-// });
+//確認已付款 - 查詢圖片 by eventId & imageId
+app.get(
+  `${apiRoot}/images/download/:orderId/:eventId/:imageId`,
+  async (req, res) => {
+    const order = await db
+      .collection("ordercollection")
+      .find({ orderId: req.params.orderId })
+      .toArray();
+    const paidAt = order[0]?.paidAt;
+    console.log("paidAt", paidAt);
 
-//查詢 events by year
-app.get("/api/events", (req, res) => {
+    if (paidAt) {
+      console.log("req", req.params);
+      const eventId = req.params.eventId;
+      const imageId = req.params.imageId;
+
+      db.collection(`imagecollection/${eventId}`)
+        .find({})
+        .project({ images: 1 })
+        .toArray((error, result) => {
+          const images = result
+            .map((item) => {
+              return item.images;
+            })
+            .flat();
+          const image = images.find((item) => item.id === imageId);
+          res.send(image);
+        });
+    } else {
+      res.status(403).json({ error: "尚未付款" });
+    }
+  }
+);
+
+//查詢 events
+app.get(`${apiRoot}/events`, (req, res) => {
   db.collection("eventlistcollection")
     .find({})
+    .sort({ date: -1 })
     .toArray((error, result) => {
       res.send(result);
     });
 });
 
 //取得活動下拉選單
-app.get("/api/events/getEventOptions", (req, res) => {
+app.get(`${apiRoot}/events/getEventOptions`, (req, res) => {
   db.collection("eventlistcollection")
     .find({})
     .project({ eventName: 1, id: 1, date: 1 })
@@ -283,13 +268,11 @@ app.get("/api/events/getEventOptions", (req, res) => {
 });
 
 //取得圖片 by ids
-app.get("/api/images/getByIds/:eventId/:ids", (req, res) => {
+app.get(`${apiRoot}/images/getByIds/:eventId/:ids`, (req, res) => {
   const eventId = req.params.eventId;
   const ids = req.params.ids;
 
-  const testconnection = db.collection(`imagecollection/${eventId}`);
-
-  testconnection
+  db.collection(`imagecollection/${eventId}`)
     .aggregate([
       {
         $unwind: "$images",
@@ -308,33 +291,42 @@ app.get("/api/images/getByIds/:eventId/:ids", (req, res) => {
               watermarkedUrl: "$images.watermarkedUrl",
               eventId: "$images.eventId",
               price: "$images.price",
+              eventName: "$images.eventName",
             },
           },
         },
       },
     ])
-    .toArray((error, result) => res.send(result));
-});
-
-//新增 event
-app.post("/api/events/add", multerUploader.single("file"), async (req, res) => {
-  const eventData = {
-    id: "evt-" + UUID.v4().substring(0, 12),
-    ...req.body,
-    isShow: false, //TODO: 預設不顯示
-  };
-
-  db.collection("eventlistcollection")
-    .insertOne(eventData)
-    .then(() => res.json({ message: "新增成功" }))
-    .catch((error) => {
-      console.log("add-error", error);
+    .toArray((error, result) => {
+      const images = result.map((item) => item.images).flat();
+      const output = removeDuplicate(images);
+      res.send(output);
     });
 });
 
+//新增 event
+app.post(
+  `${apiRoot}/events/add`,
+  multerUploader.single("file"),
+  async (req, res) => {
+    const eventData = {
+      id: "evt-" + UUID.v4().substring(0, 12),
+      ...req.body,
+      isShow: false, //TODO: 預設不顯示
+    };
+
+    db.collection("eventlistcollection")
+      .insertOne(eventData)
+      .then(() => res.json({ message: "新增成功" }))
+      .catch((error) => {
+        console.log("add-error", error);
+      });
+  }
+);
+
 //純上傳圖片到 S3
 app.post(
-  "/api/singleImgS3Upload",
+  `${apiRoot}/singleImgS3Upload`,
   multerUploader.single("file"),
   async (req, res) => {
     const file = req.file;
@@ -343,7 +335,7 @@ app.post(
 );
 
 //建立訂單
-app.post("/api/orders/add", (req, res) => {
+app.post(`${apiRoot}/orders/add`, (req, res) => {
   const orderData = {
     orderId: "ord-" + UUID.v4().substring(0, 12),
     ...req.body,
@@ -363,7 +355,7 @@ app.post("/api/orders/add", (req, res) => {
       await emailSender({
         email: user[0].email,
         subject: "攝影小隊 - 訂單成立通知",
-        text: `親愛的 ${user[0].name} 您好，您的訂單已成立，請至以下網址付款：http://localhost:3000/order/${req.body.orderId}`,
+        text: `親愛的 ${user[0].name} 您好，您的訂單已成立，請至以下網址查看訂單：${process.env.CLIENT_DOMAIN}/user/orders`,
       });
       res.json({ message: "新增成功" });
     })
@@ -374,7 +366,7 @@ app.post("/api/orders/add", (req, res) => {
 });
 
 //查詢訂單 by orderId
-app.get("/api/orders/:orderId", (req, res) => {
+app.get(`${apiRoot}/orders/:orderId`, (req, res) => {
   const orderId = req.params.orderId;
 
   db.collection("ordercollection")
@@ -385,18 +377,19 @@ app.get("/api/orders/:orderId", (req, res) => {
 });
 
 //查詢訂單 by orderBy
-app.get("/api/orders/getByUser/:orderBy", (req, res) => {
+app.get(`${apiRoot}/orders/getByUser/:orderBy`, (req, res) => {
   const orderBy = req.params.orderBy;
 
   db.collection("ordercollection")
     .find({ orderBy })
+    .sort({ createAt: -1 })
     .toArray((error, result) => {
       res.send(result);
     });
 });
 
 //付款 - 更新訂單 paidAt
-app.put("/api/orders/update/:orderId", async (req, res) => {
+app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
   db.collection("ordercollection")
     .updateOne(
       { orderId: req.params.orderId },
@@ -417,7 +410,7 @@ app.put("/api/orders/update/:orderId", async (req, res) => {
       await emailSender({
         email: user[0].email,
         subject: "攝影小隊 - 訂單付款成功通知",
-        text: `親愛的 ${user[0].name} 您好，您的訂單已付款成功，請至以下網址下載：http://localhost:3000/order/${req.body.orderId}`,
+        text: `親愛的 ${user[0].name} 您好，訂單已付款成功，感謝您的購買，請至以下網址下載：${process.env.CLIENT_DOMAIN}/user/orders`,
       });
       res.json({ message: "更新成功" });
     })
@@ -429,9 +422,10 @@ app.put("/api/orders/update/:orderId", async (req, res) => {
 });
 
 //訂單列表
-app.get("/api/orders", (req, res) => {
+app.get(`${apiRoot}/orders`, (req, res) => {
   db.collection("ordercollection")
     .find({})
+    .sort({ createAt: -1 })
     .toArray((error, result) => {
       res.send(result);
     });
