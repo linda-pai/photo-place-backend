@@ -3,7 +3,7 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 var CONNECTION_STRING = process.env.MONGO_CONNECTION_STRING;
-var DATABASE_NAME = "productlistdb";
+var DATABASE_NAME = "photopacerdb";
 var database;
 
 module.exports = {

@@ -3,7 +3,7 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const CONNECTION_STRING = process.env.MONGO_CONNECTION_STRING;
-const DATABASE_NAME = "productlistdb";
+const DATABASE_NAME = "photopacerdb";
 
 const withDB = async (operations, res) => {
   try {
