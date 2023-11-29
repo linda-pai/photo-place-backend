@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const dotenv = require("dotenv");
-dotenv.config();
+dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 const { withDB } = require("../database/db");
 

@@ -10,7 +10,7 @@ const userRouter = require("./src/routes/user");
 
 const mongoUtil = require("./src/database/mongoUtil");
 const dotenv = require("dotenv");
-dotenv.config();
+dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 const { uploadToS3, multerUploader } = require("./src/modules/uploadModules");
 const { getWatermarkedImageUrl } = require("./src/modules/drawWatermark");
@@ -74,8 +74,6 @@ app.post(`${apiRoot}/user/createUser`, async (req, res) => {
     .collection("usercollection")
     .find({ email: user.email })
     .toArray();
-
-  console.log("userExist", userExist);
 
   if (userExist.length > 0) {
     db.collection("usercollection").updateOne(
@@ -357,7 +355,9 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
         subject: "攝影小隊 - 訂單成立通知",
         html: `
         <div>
-        <img src="https://photo-place-buckets.s3.ap-northeast-1.amazonaws.com/images/386b543f2536bfa551aacb5838ec21b87fae98b299224cd20bd10fa6f8f62587-photo-pacer-logo.png" width="50%">
+        <img src=${
+          process.env.AWS_BUCKET_URL
+        }/images/a8dabef6edd01faf5089db252278d27cb55fe1317075cc503eec03481940e213-photo-pacer-logo.png width="50%">
         <div style={{ margin:0 auto }}>
         <h2> Hi ${user[0].name}，您的訂單已成立，</h2> 
         <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
@@ -433,7 +433,7 @@ app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
         subject: "攝影小隊 - 訂單付款成功通知",
         html: `
         <div>
-        <img src="https://photo-place-buckets.s3.ap-northeast-1.amazonaws.com/images/386b543f2536bfa551aacb5838ec21b87fae98b299224cd20bd10fa6f8f62587-photo-pacer-logo.png" width="50%">
+        <img src=${process.env.AWS_BUCKET_URL}/images/a8dabef6edd01faf5089db252278d27cb55fe1317075cc503eec03481940e213-photo-pacer-logo.png width="50%">
         <h2> Hi ${user[0].name}，您的訂單已付款成功，</h2> 
         <p> 請至以下網址下載照片：${process.env.CLIENT_DOMAIN}/user/orders</p>
         <p> ----------------------------------------------------------------</p> 

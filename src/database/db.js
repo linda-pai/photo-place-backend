@@ -1,6 +1,6 @@
 const { MongoClient } = require("mongodb");
 const dotenv = require("dotenv");
-dotenv.config();
+dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 const CONNECTION_STRING = process.env.MONGO_CONNECTION_STRING;
 const DATABASE_NAME = "photopacerdb";
