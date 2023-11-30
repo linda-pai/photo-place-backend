@@ -120,7 +120,7 @@ app.post(
             url: originImageUrl,
             watermarkedUrl,
             fileName,
-            price: 150,
+            price: 109,
             ...req.body,
           };
           //依照 eventId 傳到不同的 collection
@@ -143,7 +143,7 @@ app.post(
               );
             });
           } catch (error) {
-            console.log(error);
+            console.log("DetectedText-err", error);
             res.json({ message: "新增失敗" });
           }
 
@@ -172,7 +172,11 @@ app.get(`${apiRoot}/images/getByBidAndEventId/:eventId/:bib`, (req, res) => {
     .toArray((error, result) => {
       const images = result
         .map((item) => {
-          item.images.map((image) => delete image.url);
+          item.images.map((image) => {
+            delete image.url;
+            delete image.fileName;
+            return image;
+          });
           return item.images;
         })
         .flat();
@@ -220,10 +224,8 @@ app.get(
       .find({ orderId: req.params.orderId })
       .toArray();
     const paidAt = order[0]?.paidAt;
-    console.log("paidAt", paidAt);
 
     if (paidAt) {
-      console.log("req", req.params);
       const eventId = req.params.eventId;
       const imageId = req.params.imageId;
 

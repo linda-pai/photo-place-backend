@@ -22,15 +22,6 @@ const getDetectedNumbers = async (fileName) => {
         resolve([]);
       } else {
         console.log(`Detected Text for: ${fileName}`);
-        // console.log(response);
-        // response.TextDetections.forEach((label) => {
-        //   console.log(`Detected Text: ${label.DetectedText}`),
-        //     console.log(`Type: ${label.Type}`),
-        //     console.log(`ID: ${label.Id}`),
-        //     console.log(`Confidence: ${label.Confidence}`),
-        //     console.log(`Polygon: `);
-        //   console.log(label.Geometry.Polygon);
-        // });
         try {
           let detectedNumbers = [];
           response.TextDetections.map((label) =>
@@ -43,7 +34,6 @@ const getDetectedNumbers = async (fileName) => {
                 })
               : null
           );
-          console.log("getDetectedNumbers", detectedNumbers);
           resolve(detectedNumbers || []);
         } catch (error) {
           console.log(error);
