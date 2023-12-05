@@ -257,11 +257,22 @@ app.get(`${apiRoot}/events`, (req, res) => {
     });
 });
 
+//查詢 event by id
+app.get(`${apiRoot}/events/:eventId`, (req, res) => {
+  const eventId = req.params.eventId;
+
+  db.collection("eventlistcollection")
+    .find({ eventId })
+    .toArray((error, result) => {
+      res.send(result[0]);
+    });
+});
+
 //取得活動下拉選單
 app.get(`${apiRoot}/events/getEventOptions`, (req, res) => {
   db.collection("eventlistcollection")
     .find({})
-    .project({ eventName: 1, id: 1, date: 1 })
+    .project({ eventName: 1, eventId: 1, date: 1 })
     .toArray((error, result) => {
       res.send(result);
     });
@@ -310,7 +321,7 @@ app.post(
   multerUploader.single("file"),
   async (req, res) => {
     const eventData = {
-      id: "evt-" + UUID.v4().substring(0, 12),
+      eventId: "evt-" + UUID.v4().substring(0, 12),
       ...req.body,
       isShow: false, //TODO: 預設不顯示
     };
