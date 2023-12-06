@@ -258,9 +258,8 @@ app.get(`${apiRoot}/events`, (req, res) => {
 });
 
 //查詢 event by id
-app.get(`${apiRoot}/events/:eventId`, (req, res) => {
+app.get(`${apiRoot}/events/getBy/:eventId`, (req, res) => {
   const eventId = req.params.eventId;
-
   db.collection("eventlistcollection")
     .find({ eventId })
     .toArray((error, result) => {
@@ -363,10 +362,11 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
         .project({ token: 1, email: 1, name: 1, userId: 1 })
         .toArray();
       //寄信
-      await emailSender({
-        email: user[0].email,
-        subject: "攝影小隊 - 訂單成立通知",
-        html: `
+      if (user[0]?.email)
+        await emailSender({
+          email: user[0]?.email,
+          subject: "攝影小隊 - 訂單成立通知",
+          html: `
         <div>
         <img src=${
           process.env.AWS_BUCKET_URL
@@ -390,7 +390,7 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
         </div>
         </div>
         `,
-      });
+        });
       res.json({ message: "新增成功" });
     })
     .catch((error) => {
@@ -441,10 +441,11 @@ app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
         .toArray();
 
       //寄信
-      await emailSender({
-        email: user[0].email,
-        subject: "攝影小隊 - 訂單付款成功通知",
-        html: `
+      if (user[0]?.email)
+        await emailSender({
+          email: user[0]?.email,
+          subject: "攝影小隊 - 訂單付款成功通知",
+          html: `
         <div>
         <img src=${process.env.AWS_BUCKET_URL}/images/a8dabef6edd01faf5089db252278d27cb55fe1317075cc503eec03481940e213-photo-pacer-logo.png width="50%">
         <h2> Hi ${user[0].name}，您的訂單已付款成功，</h2> 
@@ -457,7 +458,7 @@ app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
         <p>📷 PHOTO PACER 攝影小隊 </p> 
         </div>
         `,
-      });
+        });
       res.json({ message: "更新成功" });
     })
 

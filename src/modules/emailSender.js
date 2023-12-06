@@ -4,12 +4,8 @@ const emailSender = (data) => {
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
-      type: "OAuth2",
-      user: process.env.MAILER_FROM_USER,
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      refreshToken: process.env.MAILER_REFRESH_TOKEN,
-      accessToken: process.env.MAILER_ACCESS_TOKEN,
+      user: process.env.MAILER_USERNAME,
+      pass: process.env.MAILER_PASSWORD,
     },
   });
 
