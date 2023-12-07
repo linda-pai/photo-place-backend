@@ -20,16 +20,19 @@ async function compositeImages(file) {
   }
 }
 
-const getWatermarkedImageUrl = async (originImage) => {
+const getWatermarkedImageUrl = async (originImage, path) => {
   return new Promise(async (resolve, reject) => {
     try {
       const watermarkedImage = await compositeImages(originImage);
 
-      const result = await uploadToS3({
-        mimetype: "image/jpg",
-        originalname: "watermarked-" + originImage.originalname,
-        buffer: watermarkedImage,
-      });
+      const result = await uploadToS3(
+        {
+          mimetype: "image/jpg",
+          originalname: "watermarked-" + originImage.originalname,
+          buffer: watermarkedImage,
+        },
+        path
+      );
       resolve({ watermarkedUrl: result.Location || "" });
     } catch (error) {
       reject(error);

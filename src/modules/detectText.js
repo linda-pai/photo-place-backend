@@ -44,10 +44,10 @@ const getDetectedNumbers = async (fileName) => {
   });
 };
 
-const uploadToS3andDetectText = (file) => {
+const uploadToS3andDetectText = (file, path) => {
   return new Promise(async (resolve, reject) => {
     try {
-      const result = await uploadToS3(file);
+      const result = await uploadToS3(file, path);
       const detectedNumbers = await getDetectedNumbers(result.key);
 
       resolve({

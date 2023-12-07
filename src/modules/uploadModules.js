@@ -11,10 +11,11 @@ const awsConfig = {
 
 const s3 = new AWS.S3(awsConfig);
 
-const uploadToS3 = async (file) => {
+const uploadToS3 = async (file, customPath) => {
+  const path = customPath || "/";
   return new Promise((resolve, reject) => {
     const key =
-      "images/" +
+      `images${path}` +
       sha256(file.originalname + new Date().toString()) +
       "-" +
       file.originalname;

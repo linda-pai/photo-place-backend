@@ -107,8 +107,8 @@ app.post(
 
     TODO: try {
       return Promise.all([
-        uploadToS3andDetectText(req.file), //1. 上傳圖片到S3   -> 辨識號碼               (拿到 originImageUrl & 辨識號碼)
-        getWatermarkedImageUrl(req.file), //2. 產生浮水印圖片 -> 上傳浮水印圖片到S3        (拿到 watermarkedImageUrl)
+        uploadToS3andDetectText(req.file, "/" + req.body.eventId + "/"), //1. 上傳圖片到S3   -> 辨識號碼               (拿到 originImageUrl & 辨識號碼)
+        getWatermarkedImageUrl(req.file, "/" + req.body.eventId + "/"), //2. 產生浮水印圖片 -> 上傳浮水印圖片到S3        (拿到 watermarkedImageUrl)
       ])
         .then((response) => {
           const { originImageUrl, detectedNumbers, fileName } = response[0];
@@ -340,7 +340,8 @@ app.post(
   multerUploader.single("file"),
   async (req, res) => {
     const file = req.file;
-    uploadToS3(file).then((result) => res.json(result));
+    const path = req.body.path || "/";
+    uploadToS3(file, path).then((result) => res.json(result));
   }
 );
 
@@ -368,26 +369,28 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
           subject: "攝影小隊 - 訂單成立通知",
           html: `
         <div>
-        <img src=${
-          process.env.AWS_BUCKET_URL
-        }/images/a8dabef6edd01faf5089db252278d27cb55fe1317075cc503eec03481940e213-photo-pacer-logo.png width="50%">
-        <div style={{ margin:0 auto }}>
-        <h2> Hi ${user[0].name}，您的訂單已成立，</h2> 
-        <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
-        <p> 至以下網址查看訂單明細：${process.env.CLIENT_DOMAIN}/user/orders</p>
-        <p> ----------------------------------------------------------------</p> 
-        <p>訂單編號：${orderData.orderId} </p> 
-        <p>訂單金額：TWD ${orderData.totalAmount}</p>  
-        <p>訂單時間：${dayjs(orderData.createAt).format(
-          "YYYY-MM-DD HH:mm:ss"
-        )} </p> 
-        <p>----------------------------------------------------------------</p> 
-        <p>感謝您的購買，祝您有美好的一天！</p> 
-        <p>如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
-        <p>聯絡信箱： photopacer@gmail.com</p>
-        <p>官方Line：@photopacer</p>
-        <p>📷 PHOTO PACER 攝影小隊 </p> 
-        </div>
+          <img src=${
+            process.env.AWS_BUCKET_URL
+          }/images/common/749d8cd4206db4453d007a461d1136d2b84751eed121f4b5b3331c3a6e8d1906-S__50159702.jpg width="50%">
+          <div style={{ margin:0 auto }}>
+            <h2> Hi ${user[0].name}，您的訂單已成立，</h2> 
+            <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
+            <p> 至以下網址查看訂單明細：${
+              process.env.CLIENT_DOMAIN
+            }/user/orders</p>
+            <p> ----------------------------------------------------------------</p> 
+            <p>訂單編號：${orderData.orderId} </p> 
+            <p>訂單金額：TWD ${orderData.totalAmount}</p>  
+            <p>訂單時間：${dayjs(orderData.createAt).format(
+              "YYYY-MM-DD HH:mm:ss"
+            )} </p> 
+            <p>----------------------------------------------------------------</p> 
+            <p>感謝您的購買，祝您有美好的一天！</p> 
+            <p>如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
+            <p>聯絡信箱： photopacer@gmail.com</p>
+            <p>官方Line：@photopacer</p>
+            <p>📷 PHOTO PACER 攝影小隊 </p> 
+          </div>
         </div>
         `,
         });
@@ -447,15 +450,18 @@ app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
           subject: "攝影小隊 - 訂單付款成功通知",
           html: `
         <div>
-        <img src=${process.env.AWS_BUCKET_URL}/images/a8dabef6edd01faf5089db252278d27cb55fe1317075cc503eec03481940e213-photo-pacer-logo.png width="50%">
-        <h2> Hi ${user[0].name}，您的訂單已付款成功，</h2> 
-        <p> 請至以下網址下載照片：${process.env.CLIENT_DOMAIN}/user/orders</p>
-        <p> ----------------------------------------------------------------</p> 
-        <p>感謝您的購買，祝您有美好的一天！</p> 
-        <p>⬇️⬇️ 如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
-        <p>聯絡信箱： photopacer@gmail.com</p>
-        <p>官方Line：@photopacer</p>
-        <p>📷 PHOTO PACER 攝影小隊 </p> 
+     
+          <img src=${process.env.AWS_BUCKET_URL}/images/common/749d8cd4206db4453d007a461d1136d2b84751eed121f4b5b3331c3a6e8d1906-S__50159702.jpg width="50%">
+          <div style={{ margin:0 auto }}>
+            <h2> Hi ${user[0].name}，您的訂單已付款成功，</h2> 
+            <p> 請至以下網址下載照片：${process.env.CLIENT_DOMAIN}/user/orders</p>
+            <p> ----------------------------------------------------------------</p> 
+            <p>感謝您的購買，祝您有美好的一天！</p> 
+            <p>⬇️⬇️ 如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
+            <p>聯絡信箱： photopacer@gmail.com</p>
+            <p>官方Line：@photopacer</p>
+            <p>📷 PHOTO PACER 攝影小隊 </p> 
+          </div>
         </div>
         `,
         });
