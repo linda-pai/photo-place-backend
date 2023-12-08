@@ -302,6 +302,7 @@ app.get(`${apiRoot}/images/getByIds/:eventId/:ids`, (req, res) => {
               eventId: "$images.eventId",
               price: "$images.price",
               eventName: "$images.eventName",
+              key: "$images.id",
             },
           },
         },
@@ -348,7 +349,6 @@ app.post(
 //建立訂單
 app.post(`${apiRoot}/orders/add`, (req, res) => {
   const orderData = {
-    orderId: "ord-" + UUID.v4().substring(0, 12),
     ...req.body,
     createAt: new Date(),
     paidAt: null,
@@ -363,6 +363,7 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
         .project({ token: 1, email: 1, name: 1, userId: 1 })
         .toArray();
       //寄信
+      console.log("user[0] ---- /orders/add", user[0]);
       if (user[0]?.email)
         await emailSender({
           email: user[0]?.email,
@@ -394,7 +395,6 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
         </div>
         `,
         });
-      res.json({ message: "新增成功" });
     })
     .catch((error) => {
       console.log("add-error", error);

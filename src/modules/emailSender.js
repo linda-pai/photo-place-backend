@@ -1,6 +1,7 @@
 const nodemailer = require("nodemailer");
 
 const emailSender = (data) => {
+  console.log("data", data);
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -17,7 +18,13 @@ const emailSender = (data) => {
     // html: "<h1>這是信件的內容 test</h1>",
   };
 
-  return transporter.sendMail(mailOptions);
+  try {
+    transporter.sendMail(mailOptions);
+    console.log("emailSender----success");
+  } catch (err) {
+    console.log("emailSender----err", err);
+  }
+  return;
 };
 
 module.exports = emailSender;
