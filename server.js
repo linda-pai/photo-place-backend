@@ -16,6 +16,9 @@ const { uploadToS3, multerUploader } = require("./src/modules/uploadModules");
 const { getWatermarkedImageUrl } = require("./src/modules/drawWatermark");
 const { uploadToS3andDetectText } = require("./src/modules/detectText");
 
+var utc = require("dayjs/plugin/utc");
+dayjs.extend(utc);
+
 const app = Express();
 const PORT = 3001;
 const apiRoot = "/api";
@@ -63,16 +66,15 @@ mongoUtil.connectToServer(function (err, client) {
 
 //TODO:有 bug 有時候會連不到 db
 app.post(`${apiRoot}/user/createUser`, async (req, res) => {
-  const userId = "usr-" + UUID.v4().substring(0, 12);
+  const userId = req.body.userId || "user-" + UUID.v4().substring(0, 12);
   const user = {
-    userId,
     role: "user", //TODO: 預設為 user
     ...req.body,
   };
   //check if user already exists
   const userExist = await db
     .collection("usercollection")
-    .find({ email: user.email })
+    .find({ userId: user.userId })
     .toArray();
 
   if (userExist.length > 0) {
@@ -363,16 +365,13 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
         .project({ token: 1, email: 1, name: 1, userId: 1 })
         .toArray();
       //寄信
-      console.log("user[0] ---- /orders/add", user[0]);
       if (user[0]?.email)
         await emailSender({
           email: user[0]?.email,
           subject: "攝影小隊 - 訂單成立通知",
           html: `
         <div>
-          <img src=${
-            process.env.AWS_BUCKET_URL
-          }/images/common/749d8cd4206db4453d007a461d1136d2b84751eed121f4b5b3331c3a6e8d1906-S__50159702.jpg width="50%">
+        
           <div style={{ margin:0 auto }}>
             <h2> Hi ${user[0].name}，您的訂單已成立，</h2> 
             <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
@@ -382,19 +381,28 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
             <p> ----------------------------------------------------------------</p> 
             <p>訂單編號：${orderData.orderId} </p> 
             <p>訂單金額：TWD ${orderData.totalAmount}</p>  
-            <p>訂單時間：${dayjs(orderData.createAt).format(
-              "YYYY-MM-DD HH:mm:ss"
-            )} </p> 
+            <p>訂單時間：${dayjs(orderData.createAt)
+              .utcOffset(8)
+              .format("YYYY-MM-DD HH:mm:ss")} </p> 
             <p>----------------------------------------------------------------</p> 
             <p>感謝您的購買，祝您有美好的一天！</p> 
             <p>如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
-            <p>聯絡信箱： photopacer@gmail.com</p>
-            <p>官方Line：@photopacer</p>
             <p>📷 PHOTO PACER 攝影小隊 </p> 
+            <p>聯絡信箱： photopacer@gmail.com</p>
+            <div>
+              <p>官方Line：@774uebxu</p>
+              <img src=${
+                process.env.AWS_BUCKET_URL
+              }/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
+            </div>
           </div>
+          <img src=${
+            process.env.AWS_BUCKET_URL
+          }/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
         </div>
         `,
         });
+      res.json({ message: "新增成功" });
     })
     .catch((error) => {
       console.log("add-error", error);
@@ -450,18 +458,20 @@ app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
           subject: "攝影小隊 - 訂單付款成功通知",
           html: `
         <div>
-     
-          <img src=${process.env.AWS_BUCKET_URL}/images/common/749d8cd4206db4453d007a461d1136d2b84751eed121f4b5b3331c3a6e8d1906-S__50159702.jpg width="50%">
           <div style={{ margin:0 auto }}>
             <h2> Hi ${user[0].name}，您的訂單已付款成功，</h2> 
             <p> 請至以下網址下載照片：${process.env.CLIENT_DOMAIN}/user/orders</p>
             <p> ----------------------------------------------------------------</p> 
             <p>感謝您的購買，祝您有美好的一天！</p> 
             <p>⬇️⬇️ 如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
-            <p>聯絡信箱： photopacer@gmail.com</p>
-            <p>官方Line：@photopacer</p>
             <p>📷 PHOTO PACER 攝影小隊 </p> 
+            <p>聯絡信箱： photopacer@gmail.com</p>
+            <div>
+              <p>官方Line：@774uebxu</p>
+              <img src=${process.env.AWS_BUCKET_URL}/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
+            </div>
           </div>
+          <img src=${process.env.AWS_BUCKET_URL}/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
         </div>
         `,
         });

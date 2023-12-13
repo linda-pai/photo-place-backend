@@ -18,13 +18,7 @@ const emailSender = (data) => {
     // html: "<h1>這是信件的內容 test</h1>",
   };
 
-  try {
-    transporter.sendMail(mailOptions);
-    console.log("emailSender----success");
-  } catch (err) {
-    console.log("emailSender----err", err);
-  }
-  return;
+  return transporter.sendMail(mailOptions);
 };
 
 module.exports = emailSender;

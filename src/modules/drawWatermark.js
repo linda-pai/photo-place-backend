@@ -5,7 +5,7 @@ require("dotenv").config();
 async function compositeImages(file) {
   try {
     return await sharp(file.buffer)
-      .jpeg({ quality: 20 }) //壓縮
+      .jpeg({ quality: 10 }) //壓縮
       .composite([
         {
           input: "src/assets/photo-pacer-810_410.png", //浮水印圖片
