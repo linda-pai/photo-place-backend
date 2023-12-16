@@ -189,6 +189,31 @@ app.get(`${apiRoot}/images/getByBidAndEventId/:eventId/:bib`, (req, res) => {
     });
 });
 
+//查詢圖片 by path & event_id
+app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:path`, (req, res) => {
+  const path = req.params.path;
+  const eventId = req.params.eventId;
+
+  db.collection(`imagecollection/${eventId}`)
+    .find({ path })
+    .toArray((error, result) => {
+      const images = result
+        .map((item) => {
+          item.images.map((image) => {
+            delete image.url;
+            delete image.fileName;
+            return image;
+          });
+          return item.images;
+        })
+        .flat();
+
+      const output = removeDuplicate(images);
+
+      res.send(output);
+    });
+});
+
 //查詢圖片 by event_id
 app.get(`${apiRoot}/images/getByEventId/:eventId`, (req, res) => {
   const eventId = req.params.eventId;
@@ -208,18 +233,47 @@ app.get(`${apiRoot}/images/getByEventId/:eventId`, (req, res) => {
       });
 
       const flattenData = newObj.map((item) => item.images).flat();
-
       const output = removeDuplicate(flattenData);
-
       res.send(output);
     });
 });
 
-//check if is paid
-
 //確認已付款 - 查詢圖片 by eventId & imageId
+//改成用 /images/getByEventIdAndImageIds/:orderId/:eventId/:imageIds
+// app.get(
+//   `${apiRoot}/images/download/:orderId/:eventId/:imageId`,
+//   async (req, res) => {
+//     const order = await db
+//       .collection("ordercollection")
+//       .find({ orderId: req.params.orderId })
+//       .toArray();
+//     const paidAt = order[0]?.paidAt;
+
+//     if (paidAt) {
+//       const eventId = req.params.eventId;
+//       const imageId = req.params.imageId;
+
+//       db.collection(`imagecollection/${eventId}`)
+//         .find({})
+//         .project({ images: 1 })
+//         .toArray((error, result) => {
+//           const images = result
+//             .map((item) => {
+//               return item.images;
+//             })
+//             .flat();
+//           const image = images.find((item) => item.id === imageId);
+//           res.send(image);
+//         });
+//     } else {
+//       res.status(403).json({ error: "尚未付款" });
+//     }
+//   }
+// );
+
+//確認已付款 - 查詢圖片 by eventId & imageIds
 app.get(
-  `${apiRoot}/images/download/:orderId/:eventId/:imageId`,
+  `${apiRoot}/images/getByEventIdAndImageIds/:orderId/:eventId/:imageIds`,
   async (req, res) => {
     const order = await db
       .collection("ordercollection")
@@ -229,19 +283,36 @@ app.get(
 
     if (paidAt) {
       const eventId = req.params.eventId;
-      const imageId = req.params.imageId;
+      const imageIds = req.params.imageIds;
 
       db.collection(`imagecollection/${eventId}`)
-        .find({})
-        .project({ images: 1 })
+        .aggregate([
+          {
+            $unwind: "$images",
+          },
+          {
+            $match: {
+              "images.id": { $in: imageIds.split(",") },
+            },
+          },
+          {
+            $group: {
+              _id: "$_id",
+              images: {
+                $push: {
+                  fileName: "$images.fileName",
+                  url: "$images.url",
+                  id: "$images.id",
+                  eventName: "$images.eventName",
+                },
+              },
+            },
+          },
+        ])
         .toArray((error, result) => {
-          const images = result
-            .map((item) => {
-              return item.images;
-            })
-            .flat();
-          const image = images.find((item) => item.id === imageId);
-          res.send(image);
+          const images = result.map((item) => item.images).flat();
+          const output = removeDuplicate(images);
+          res.send(output);
         });
     } else {
       res.status(403).json({ error: "尚未付款" });
