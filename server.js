@@ -27,7 +27,10 @@ const bodyParser = require("body-parser");
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
-const whitelist = [`${process.env.CLIENT_DOMAIN}`];
+const whitelist = [
+  `${process.env.CLIENT_DOMAIN}`,
+  `${process.env.CLIENT_WWW_DOMAIN}`,
+];
 const corsOptions = {
   origin: (origin, callback) => {
     if (whitelist.indexOf(origin) !== -1 || !origin) {
@@ -166,11 +169,11 @@ app.post(
 );
 //查詢圖片 by 號碼布 & event_id
 app.get(`${apiRoot}/images/getByBidAndEventId/:eventId/:bib`, (req, res) => {
-  const bid = Number(req.params.bib);
+  const bid = Number(req.params.bib) || req.params.bib;
   const eventId = req.params.eventId;
 
   db.collection(`imagecollection/${eventId}`)
-    .find({ path: new RegExp(".*" + bid + ".*") })
+    .find(bid ? { path: new RegExp(".*" + bid + ".*") } : {})
     .toArray((error, result) => {
       const images = result
         .map((item) => {
@@ -222,7 +225,7 @@ app.get(`${apiRoot}/images/getByEventId/:eventId`, (req, res) => {
     //remove duplicate by images.id
     .find({})
     //.skip(10) //TODO: 這邊要改成分頁
-    .limit(100)
+    .limit(50)
     .toArray((error, result) => {
       const newObj = result.map((item) => {
         const images = item.images.map((image) => {
