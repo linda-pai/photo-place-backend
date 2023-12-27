@@ -14,6 +14,10 @@ dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 const { uploadToS3, multerUploader } = require("./src/modules/uploadModules");
 const { getWatermarkedImageUrl } = require("./src/modules/drawWatermark");
+const {
+  getWatermarkedImageUrlFromRemote,
+} = require("./src/modules/drawWatermarkFromRemote");
+
 const { uploadToS3andDetectText } = require("./src/modules/detectText");
 
 var utc = require("dayjs/plugin/utc");
@@ -164,6 +168,57 @@ app.post(
     }
   }
 );
+
+//update 圖片 watermarkedUrl by imageId
+app.put(`${apiRoot}/images/updateWatermarkedUrl/:eventId`, (req, res) => {
+  const eventId = req.params.eventId;
+
+  const updateWatermarkedUrl = async (eventId) => {
+    const images = await db
+      .collection(`imagecollection/${eventId}`)
+      .find({})
+      .limit(20)
+      .skip(1600)
+      .toArray();
+
+    const flattenData = images.map((item) => item.images).flat();
+    console.log("flattenData.length", flattenData.length);
+
+    for (var x = 0, ln = flattenData.length; x < ln; x++) {
+      setTimeout(
+        function (y) {
+          uploadSinglePhoto(y);
+        },
+        x * 1500,
+        x
+      );
+    }
+
+    const uploadSinglePhoto = async (x) => {
+      const watermarkedImage = await getWatermarkedImageUrlFromRemote(
+        flattenData[x].url,
+        "/" + eventId + "/"
+      );
+
+      db.collection(`imagecollection/${eventId}`).updateOne(
+        { "images.id": flattenData[x].id },
+        {
+          $set: {
+            "images.$.watermarkedUrl": watermarkedImage.watermarkedUrl,
+          },
+        }
+      );
+
+      console.log(
+        "success!!!watermarkedImage \n",
+        watermarkedImage.watermarkedUrl
+      );
+    };
+  };
+
+  updateWatermarkedUrl(eventId);
+});
+
 //查詢圖片 by 號碼布 & event_id
 app.get(`${apiRoot}/images/getByBidAndEventId/:eventId/:bib`, (req, res) => {
   const bid = Number(req.params.bib);
