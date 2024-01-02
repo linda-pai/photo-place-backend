@@ -39,7 +39,7 @@ const getWatermarkedImageUrlFromRemote = async (imageUrl, path) => {
         },
         path
       );
-      console.log("result.Location", result.Location);
+      // console.log("result.Location", result.Location);
       resolve({ watermarkedUrl: result.Location || "" });
     } catch (error) {
       reject(error);

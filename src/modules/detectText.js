@@ -21,7 +21,7 @@ const getDetectedNumbers = async (fileName) => {
         console.log(err, err.stack); // handle error if an error occurred
         resolve([]);
       } else {
-        console.log(`Detected Text for: ${fileName}`);
+        // console.log(`Detected Text for: ${fileName}`);
         try {
           let detectedNumbers = [];
           response.TextDetections.map((label) =>
