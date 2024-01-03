@@ -4,7 +4,6 @@ const UUID = require("uuid");
 const emailSender = require("./src/modules/emailSender");
 const session = require("cookie-session");
 const dayjs = require("dayjs");
-const { removeDuplicate } = require("./src/utils/removeDuplicate");
 
 const userRouter = require("./src/routes/user");
 
@@ -14,6 +13,10 @@ dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 const { uploadToS3, multerUploader } = require("./src/modules/uploadModules");
 const { getWatermarkedImageUrl } = require("./src/modules/drawWatermark");
+const {
+  getWatermarkedImageUrlFromRemote,
+} = require("./src/modules/drawWatermarkFromRemote");
+
 const { uploadToS3andDetectText } = require("./src/modules/detectText");
 
 var utc = require("dayjs/plugin/utc");
@@ -72,6 +75,7 @@ app.post(`${apiRoot}/user/createUser`, async (req, res) => {
   const userId = req.body.userId || "user-" + UUID.v4().substring(0, 12);
   const user = {
     role: "user", //TODO: 預設為 user
+    createTime: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
     ...req.body,
   };
   //check if user already exists
@@ -115,7 +119,7 @@ app.post(
         uploadToS3andDetectText(req.file, "/" + req.body.eventId + "/"), //1. 上傳圖片到S3   -> 辨識號碼               (拿到 originImageUrl & 辨識號碼)
         getWatermarkedImageUrl(req.file, "/" + req.body.eventId + "/"), //2. 產生浮水印圖片 -> 上傳浮水印圖片到S3        (拿到 watermarkedImageUrl)
       ])
-        .then((response) => {
+        .then(async (response) => {
           const { originImageUrl, detectedNumbers, fileName } = response[0];
           const { watermarkedUrl } = response[1];
           const eventId = req.body.eventId;
@@ -129,24 +133,23 @@ app.post(
             ...req.body,
           };
           //依照 eventId 傳到不同的 collection
-          // 1. 檢查是否有該 path 2. 沒有 -> 新增到 "common" 這個 path 3. 有 -> push
+          //path: detectedNumbers or common
           try {
             const paths =
               detectedNumbers.length > 0
                 ? detectedNumbers
                 : [{ DetectedText: "common" }];
-            paths.map(({ DetectedText }) => {
-              const path = DetectedText;
-              db.collection(`imagecollection/${eventId}`).updateOne(
-                { path },
-                {
-                  $push: {
-                    images: data,
-                  },
-                },
-                { upsert: true }
-              );
-            });
+
+            const pathList = paths.map(({ DetectedText }) => DetectedText);
+
+            const imageObj = {
+              path: pathList,
+              image: data,
+            };
+
+            await db
+              .collection(`imagecollection/${eventId}`)
+              .insertOne(imageObj);
           } catch (error) {
             console.log("DetectedText-err", error);
             res.json({ message: "新增失敗" });
@@ -167,112 +170,116 @@ app.post(
     }
   }
 );
+
+//update 圖片 watermarkedUrl by imageId
+app.put(`${apiRoot}/images/updateWatermarkedUrl/:eventId`, (req, res) => {
+  const eventId = req.params.eventId;
+
+  const updateWatermarkedUrl = async (eventId) => {
+    const images = await db
+      .collection(`imagecollection/${eventId}`)
+      .find({})
+      .limit(20)
+      .skip(1600)
+      .toArray();
+
+    const flattenData = images.map((item) => item.image).flat();
+    console.log("flattenData.length", flattenData.length);
+
+    for (var x = 0, ln = flattenData.length; x < ln; x++) {
+      setTimeout(
+        function (y) {
+          uploadSinglePhoto(y);
+        },
+        x * 1500,
+        x
+      );
+    }
+
+    const uploadSinglePhoto = async (x) => {
+      const watermarkedImage = await getWatermarkedImageUrlFromRemote(
+        flattenData[x].url,
+        "/" + eventId + "/"
+      );
+
+      db.collection(`imagecollection/${eventId}`).updateOne(
+        { "image.id": flattenData[x].id },
+        {
+          $set: {
+            "image.$.watermarkedUrl": watermarkedImage.watermarkedUrl,
+          },
+        }
+      );
+
+      console.log(
+        "success!!!watermarkedImage \n",
+        watermarkedImage.watermarkedUrl
+      );
+    };
+  };
+
+  updateWatermarkedUrl(eventId);
+});
+
 //查詢圖片 by 號碼布 & event_id
-app.get(`${apiRoot}/images/getByBidAndEventId/:eventId/:bib`, (req, res) => {
-  const bid = Number(req.params.bib) || req.params.bib;
+app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:bib`, (req, res) => {
+  const bid = req.params.bib;
   const eventId = req.params.eventId;
 
+  const countsPerPage = 100;
+  const page = req.query.page - 1 || 0;
+
   db.collection(`imagecollection/${eventId}`)
-    .find(bid ? { path: new RegExp(".*" + bid + ".*") } : {})
+    .aggregate([
+      {
+        $unwind: "$image",
+      },
+      {
+        $match: {
+          path:
+            bid === "all"
+              ? {
+                  $elemMatch: { $regex: new RegExp(".*") },
+                  $ne: "common",
+                }
+              : {
+                  $elemMatch: { $regex: new RegExp(".*" + bid + ".*") },
+                },
+        },
+      },
+      {
+        $group: {
+          _id: "$_id",
+          image: {
+            $push: {
+              fileName: "$image.fileName",
+              url: "$image.url",
+              id: "$image.id",
+              eventName: "$image.eventName",
+              watermarkedUrl: "$image.watermarkedUrl",
+            },
+          },
+        },
+      },
+    ])
+    .sort({ _id: 1 })
+    .skip(page * countsPerPage)
+    .limit(countsPerPage)
     .toArray((error, result) => {
-      const images = result
-        .map((item) => {
-          item.images.map((image) => {
-            delete image.url;
-            delete image.fileName;
-            return image;
-          });
-          return item.images;
-        })
-        .flat();
-
-      const output = removeDuplicate(images);
-
-      res.send(output);
+      const images = result.map((item) => item.image).flat();
+      res.send(images);
     });
 });
 
-//查詢圖片 by path & event_id
-app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:path`, (req, res) => {
-  const path = req.params.path;
+//取得所有圖片 count
+app.get(`${apiRoot}/images/getCount/:eventId`, async (req, res) => {
   const eventId = req.params.eventId;
+  const count = await db
+    .collection(`imagecollection/${eventId}`)
+    .countDocuments();
 
-  db.collection(`imagecollection/${eventId}`)
-    .find({ path })
-    .toArray((error, result) => {
-      const images = result
-        .map((item) => {
-          item.images.map((image) => {
-            delete image.url;
-            delete image.fileName;
-            return image;
-          });
-          return item.images;
-        })
-        .flat();
-
-      const output = removeDuplicate(images);
-
-      res.send(output);
-    });
+  res.send({ count });
 });
-
-//查詢圖片 by event_id
-app.get(`${apiRoot}/images/getByEventId/:eventId`, (req, res) => {
-  const eventId = req.params.eventId;
-
-  db.collection(`imagecollection/${eventId}`)
-    //remove duplicate by images.id
-    .find({})
-    //.skip(10) //TODO: 這邊要改成分頁
-    .limit(50)
-    .toArray((error, result) => {
-      const newObj = result.map((item) => {
-        const images = item.images.map((image) => {
-          delete image.url;
-          return image;
-        });
-        return { path: item.path, images };
-      });
-
-      const flattenData = newObj.map((item) => item.images).flat();
-      const output = removeDuplicate(flattenData);
-      res.send(output);
-    });
-});
-
-//確認已付款 - 查詢圖片 by eventId & imageId
-//改成用 /images/getByEventIdAndImageIds/:orderId/:eventId/:imageIds
-// app.get(
-//   `${apiRoot}/images/download/:orderId/:eventId/:imageId`,
-//   async (req, res) => {
-//     const order = await db
-//       .collection("ordercollection")
-//       .find({ orderId: req.params.orderId })
-//       .toArray();
-//     const paidAt = order[0]?.paidAt;
-
-//     if (paidAt) {
-//       const eventId = req.params.eventId;
-//       const imageId = req.params.imageId;
-
-//       db.collection(`imagecollection/${eventId}`)
-//         .find({})
-//         .project({ images: 1 })
-//         .toArray((error, result) => {
-//           const images = result
-//             .map((item) => {
-//               return item.images;
-//             })
-//             .flat();
-//           const image = images.find((item) => item.id === imageId);
-//           res.send(image);
-//         });
-//     } else {
-//       res.status(403).json({ error: "尚未付款" });
-//     }
-//   }
-// );
 
 //確認已付款 - 查詢圖片 by eventId & imageIds
 app.get(
@@ -291,31 +298,30 @@ app.get(
       db.collection(`imagecollection/${eventId}`)
         .aggregate([
           {
-            $unwind: "$images",
+            $unwind: "$image",
           },
           {
             $match: {
-              "images.id": { $in: imageIds.split(",") },
+              "image.id": { $in: imageIds.split(",") },
             },
           },
           {
             $group: {
               _id: "$_id",
-              images: {
+              image: {
                 $push: {
-                  fileName: "$images.fileName",
-                  url: "$images.url",
-                  id: "$images.id",
-                  eventName: "$images.eventName",
+                  fileName: "$image.fileName",
+                  url: "$image.url",
+                  id: "$image.id",
+                  eventName: "$image.eventName",
                 },
               },
             },
           },
         ])
         .toArray((error, result) => {
-          const images = result.map((item) => item.images).flat();
-          const output = removeDuplicate(images);
-          res.send(output);
+          const images = result.map((item) => item.image).flat();
+          res.send(images);
         });
     } else {
       res.status(403).json({ error: "尚未付款" });
@@ -361,33 +367,32 @@ app.get(`${apiRoot}/images/getByIds/:eventId/:ids`, (req, res) => {
   db.collection(`imagecollection/${eventId}`)
     .aggregate([
       {
-        $unwind: "$images",
+        $unwind: "$image",
       },
       {
         $match: {
-          "images.id": { $in: ids.split(",") },
+          "image.id": { $in: ids.split(",") },
         },
       },
       {
         $group: {
           _id: "$_id",
-          images: {
+          image: {
             $push: {
-              id: "$images.id",
-              watermarkedUrl: "$images.watermarkedUrl",
-              eventId: "$images.eventId",
-              price: "$images.price",
-              eventName: "$images.eventName",
-              key: "$images.id",
+              id: "$image.id",
+              watermarkedUrl: "$image.watermarkedUrl",
+              eventId: "$image.eventId",
+              price: "$image.price",
+              eventName: "$image.eventName",
+              key: "$image.id",
             },
           },
         },
       },
     ])
     .toArray((error, result) => {
-      const images = result.map((item) => item.images).flat();
-      const output = removeDuplicate(images);
-      res.send(output);
+      const images = result.map((item) => item.image).flat();
+      res.send(images);
     });
 });
 
@@ -426,7 +431,7 @@ app.post(
 app.post(`${apiRoot}/orders/add`, (req, res) => {
   const orderData = {
     ...req.body,
-    createAt: new Date(),
+    createAt: datejs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
     paidAt: null,
   };
 
@@ -514,7 +519,7 @@ app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
       { orderId: req.params.orderId },
       {
         $set: {
-          paidAt: new Date(),
+          paidAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
         },
       }
     )
