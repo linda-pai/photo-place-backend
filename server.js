@@ -4,6 +4,7 @@ const UUID = require("uuid");
 const emailSender = require("./src/modules/emailSender");
 const session = require("cookie-session");
 const dayjs = require("dayjs");
+const linePay = require("./src/modules/linePay/linePay");
 
 const userRouter = require("./src/routes/user");
 
@@ -431,7 +432,7 @@ app.post(
 app.post(`${apiRoot}/orders/add`, (req, res) => {
   const orderData = {
     ...req.body,
-    createAt: datejs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+    createAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
     paidAt: null,
   };
 
@@ -520,22 +521,28 @@ app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
       {
         $set: {
           paidAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+          transactionId: req.body.transactionId,
         },
       }
     )
     .then(async () => {
-      const user = await db
-        .collection("usercollection")
-        .find({ userId: req.body.orderBy })
-        .project({ token: 1, email: 1, name: 1, userId: 1 })
-        .toArray();
+      db.collection("ordercollection")
+        .findOne({ orderId: req.params.orderId })
+        .then(async (result) => {
+          const { orderBy } = result;
 
-      //寄信
-      if (user[0]?.email)
-        await emailSender({
-          email: user[0]?.email,
-          subject: "攝影小隊 - 訂單付款成功通知",
-          html: `
+          const user = await db
+            .collection("usercollection")
+            .find({ userId: orderBy })
+            .project({ token: 1, email: 1, name: 1, userId: 1 })
+            .toArray();
+
+          //寄信
+          if (user[0]?.email)
+            await emailSender({
+              email: user[0]?.email,
+              subject: "攝影小隊 - 訂單付款成功通知",
+              html: `
         <div>
           <div style={{ margin:0 auto }}>
             <h2> Hi ${user[0].name}，您的訂單已付款成功，</h2> 
@@ -553,8 +560,9 @@ app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
           <img src=${process.env.AWS_BUCKET_URL}/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
         </div>
         `,
+            });
+          res.json({ message: "更新成功" });
         });
-      res.json({ message: "更新成功" });
     })
 
     .catch((error) => {
@@ -571,4 +579,20 @@ app.get(`${apiRoot}/orders`, (req, res) => {
     .toArray((error, result) => {
       res.send(result);
     });
+});
+
+//line pay request
+app.post(`${apiRoot}/linepay/request`, async (req, res) => {
+  const { orderId, totalAmount: amount, items } = req.body;
+  const refinedProducts = items.map((item) => ({
+    id: item.id,
+    name: item.eventName + " " + item.id,
+    imageUrl: item.watermarkedUrl,
+    quantity: 1,
+    price: item.price,
+  }));
+
+  const linePayRequest = await linePay(orderId, amount, refinedProducts);
+
+  res.send({ status: "success", result: linePayRequest });
 });
