@@ -5,6 +5,9 @@ const emailSender = require("./src/modules/emailSender");
 const session = require("cookie-session");
 const dayjs = require("dayjs");
 const linePay = require("./src/modules/linePay/linePay");
+const newebPay = require("./src/modules/newebpay/newebPay");
+const createSesDecrypt = require("./src/modules/newebpay/createSesDecrypt");
+const createShaEncrypt = require("./src/modules/newebpay/createShaEncrypt");
 
 const userRouter = require("./src/routes/user");
 
@@ -583,7 +586,8 @@ app.get(`${apiRoot}/orders`, (req, res) => {
 
 //line pay request
 app.post(`${apiRoot}/linepay/request`, async (req, res) => {
-  const { orderId, totalAmount: amount, items } = req.body;
+  const { orderId, amount, items } = req.body;
+
   const refinedProducts = items.map((item) => ({
     id: item.id,
     name: item.eventName + " " + item.id,
@@ -595,4 +599,38 @@ app.post(`${apiRoot}/linepay/request`, async (req, res) => {
   const linePayRequest = await linePay(orderId, amount, refinedProducts);
 
   res.send({ status: "success", result: linePayRequest });
+});
+
+app.post(`${apiRoot}/newebpay/request`, async (req, res) => {
+  const data = req.body;
+  const encryptOrder = await newebPay(data);
+
+  res.send({
+    status: "success",
+    result: encryptOrder,
+    url: process.env.NEWEBPAY_PGW_URL,
+  });
+});
+
+app.post(`${apiRoot}/newebpay/decrypt`, async (req, res) => {
+  const data = createSesDecrypt(req.body.TradeInfo);
+  if (data.Status === "SUCCESS") {
+    res.send({ status: "success", ...data });
+  } else {
+    res.send({ status: "fail", ...data });
+  }
+});
+
+app.post(`${apiRoot}/newebpay/notify`, async (req, res) => {
+  // 解密交易內容
+  const response = req.body;
+  const data = createSesDecrypt(response.TradeInfo);
+  console.log("data:", data);
+  // 使用 HASH 再次 SHA 加密字串，確保比對一致（確保不正確的請求觸發交易成功）
+  const thisShaEncrypt = createShaEncrypt(res.TradeInfo);
+  if (!thisShaEncrypt === res.TradeSha) {
+    console.log("付款失敗：TradeSha 不一致");
+    return res.end();
+  }
+  return res.end();
 });

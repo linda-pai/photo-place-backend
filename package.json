@@ -18,6 +18,7 @@
     "config": "^3.3.9",
     "cookie-session": "^2.0.0",
     "cors": "^2.8.5",
+    "crypto": "^1.0.1",
     "crypto-js": "^4.2.0",
     "dayjs": "^1.11.10",
     "dotenv": "^16.3.1",
