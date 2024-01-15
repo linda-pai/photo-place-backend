@@ -117,7 +117,7 @@ app.post(
   multerUploader.single("file"),
   async (req, res) => {
     //取得 lastModified from req.file
-
+    if (!req.file) return res.json({ error: "沒有檔案" });
     TODO: try {
       return Promise.all([
         uploadToS3andDetectText(req.file, "/" + req.body.eventId + "/"), //1. 上傳圖片到S3   -> 辨識號碼               (拿到 originImageUrl & 辨識號碼)
@@ -156,21 +156,22 @@ app.post(
               .insertOne(imageObj);
           } catch (error) {
             console.log("DetectedText-err", error);
-            res.json({ message: "新增失敗" });
+            res.json({ error: "新增失敗" });
           }
 
           res.status(200).json({
             message: "上傳成功",
             data,
+            progress: 100,
           });
         })
         .catch((err) => {
           console.log("err", err);
-          res.json({ message: "新增失敗" });
+          res.json({ error: "新增失敗" });
         });
     } catch (error) {
       console.log(error);
-      res.json({ message: "新增失敗" });
+      res.json({ error: "新增失敗" });
     }
   }
 );
@@ -586,7 +587,7 @@ app.get(`${apiRoot}/orders`, (req, res) => {
 
 //line pay request
 app.post(`${apiRoot}/linepay/request`, async (req, res) => {
-  const { orderId, amount, items } = req.body;
+  const { orderId, totalAmount: amount, items } = req.body;
 
   const refinedProducts = items.map((item) => ({
     id: item.id,
@@ -595,6 +596,8 @@ app.post(`${apiRoot}/linepay/request`, async (req, res) => {
     quantity: 1,
     price: item.price,
   }));
+
+  console.log("refinedProducts", refinedProducts);
 
   const linePayRequest = await linePay(orderId, amount, refinedProducts);
 
