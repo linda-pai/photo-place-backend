@@ -599,6 +599,17 @@ app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
     });
 });
 
+//刪除訂單
+app.post(`${apiRoot}/orders/delete/:orderId`, (req, res) => {
+  db.collection("ordercollection")
+    .deleteOne({ orderId: req.params.orderId })
+    .then(() => res.json({ message: "刪除成功" }))
+    .catch((error) => {
+      console.log("delete-error", error);
+      return res.json({ message: "刪除失敗" });
+    });
+});
+
 //訂單列表
 app.get(`${apiRoot}/orders`, (req, res) => {
   db.collection("ordercollection")
