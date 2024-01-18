@@ -467,7 +467,7 @@ app.post(
 app.post(`${apiRoot}/orders/add`, (req, res) => {
   const orderData = {
     ...req.body,
-    createAt: datejs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+    createAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
     paidAt: null,
   };
 
