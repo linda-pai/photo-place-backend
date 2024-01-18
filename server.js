@@ -113,7 +113,7 @@ app.post(
   multerUploader.single("file"),
   async (req, res) => {
     //取得 lastModified from req.file
-
+    if (!req.file) return res.json({ error: "沒有檔案" });
     TODO: try {
       return Promise.all([
         uploadToS3andDetectText(req.file, "/" + req.body.eventId + "/"), //1. 上傳圖片到S3   -> 辨識號碼               (拿到 originImageUrl & 辨識號碼)
@@ -145,6 +145,8 @@ app.post(
             const imageObj = {
               path: pathList,
               image: data,
+              author: req.body.author,
+              uploadId: req.body.uploadId,
             };
 
             await db
@@ -152,21 +154,22 @@ app.post(
               .insertOne(imageObj);
           } catch (error) {
             console.log("DetectedText-err", error);
-            res.json({ message: "新增失敗" });
+            res.json({ error: "新增失敗" });
           }
 
           res.status(200).json({
             message: "上傳成功",
             data,
+            progress: 100,
           });
         })
         .catch((err) => {
           console.log("err", err);
-          res.json({ message: "新增失敗" });
+          res.json({ error: "新增失敗" });
         });
     } catch (error) {
       console.log(error);
-      res.json({ message: "新增失敗" });
+      res.json({ error: "新增失敗" });
     }
   }
 );
@@ -221,6 +224,38 @@ app.put(`${apiRoot}/images/updateWatermarkedUrl/:eventId`, (req, res) => {
   updateWatermarkedUrl(eventId);
 });
 
+//紀錄上傳資訊
+app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
+  const TimeStamp = dayjs().utcOffset(8).format("YYYYMMDDHHmmss");
+  const data = {
+    ...req.body,
+    createAt: TimeStamp,
+    paidAt: null,
+  };
+
+  const author = req.body.author;
+  if (!author) return res.json({ message: "新增失敗" });
+
+  db.collection(`uploadIntocollection`)
+    .insertOne(data)
+    .then(() => res.json({ message: "新增成功" }))
+    .catch((error) => {
+      console.log("add-error", error);
+      return res.json({ message: "新增失敗" });
+    });
+});
+
+//查詢上傳資訊 by author
+app.get(`${apiRoot}/images/getUploadInfo/:author`, (req, res) => {
+  const author = req.params.author;
+
+  db.collection(`uploadIntocollection`)
+    .find({ author })
+    .toArray((error, result) => {
+      res.send(result);
+    });
+});
+
 //查詢圖片 by 號碼布 & event_id
 app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:bib`, (req, res) => {
   const bid = req.params.bib;
@@ -256,6 +291,7 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:bib`, (req, res) => {
               url: "$image.url",
               id: "$image.id",
               eventName: "$image.eventName",
+              eventId: "$image.eventId",
               watermarkedUrl: "$image.watermarkedUrl",
             },
           },
@@ -431,7 +467,7 @@ app.post(
 app.post(`${apiRoot}/orders/add`, (req, res) => {
   const orderData = {
     ...req.body,
-    createAt: datejs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+    createAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
     paidAt: null,
   };
 
