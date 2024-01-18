@@ -145,6 +145,8 @@ app.post(
             const imageObj = {
               path: pathList,
               image: data,
+              author: req.body.author,
+              uploadId: req.body.uploadId,
             };
 
             await db
@@ -222,6 +224,38 @@ app.put(`${apiRoot}/images/updateWatermarkedUrl/:eventId`, (req, res) => {
   updateWatermarkedUrl(eventId);
 });
 
+//紀錄上傳資訊
+app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
+  const TimeStamp = dayjs().utcOffset(8).format("YYYYMMDDHHmmss");
+  const data = {
+    ...req.body,
+    createAt: TimeStamp,
+    paidAt: null,
+  };
+
+  const author = req.body.author;
+  if (!author) return res.json({ message: "新增失敗" });
+
+  db.collection(`uploadIntocollection`)
+    .insertOne(data)
+    .then(() => res.json({ message: "新增成功" }))
+    .catch((error) => {
+      console.log("add-error", error);
+      return res.json({ message: "新增失敗" });
+    });
+});
+
+//查詢上傳資訊 by author
+app.get(`${apiRoot}/images/getUploadInfo/:author`, (req, res) => {
+  const author = req.params.author;
+
+  db.collection(`uploadIntocollection`)
+    .find({ author })
+    .toArray((error, result) => {
+      res.send(result);
+    });
+});
+
 //查詢圖片 by 號碼布 & event_id
 app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:bib`, (req, res) => {
   const bid = req.params.bib;
@@ -257,6 +291,7 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:bib`, (req, res) => {
               url: "$image.url",
               id: "$image.id",
               eventName: "$image.eventName",
+              eventId: "$image.eventId",
               watermarkedUrl: "$image.watermarkedUrl",
             },
           },
