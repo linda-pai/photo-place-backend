@@ -122,7 +122,7 @@ app.post(
         .then(async (response) => {
           const { originImageUrl, detectedNumbers, fileName } = response[0];
           const { watermarkedUrl } = response[1];
-          const eventId = req.body.eventId;
+          const { eventId, author, uploadId } = req.body;
 
           const data = {
             id: "img-" + UUID.v4(),
@@ -145,8 +145,8 @@ app.post(
             const imageObj = {
               path: pathList,
               image: data,
-              author: req.body.author,
-              uploadId: req.body.uploadId,
+              author,
+              uploadId,
             };
 
             await db
