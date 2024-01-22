@@ -287,8 +287,6 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:bib`, (req, res) => {
           _id: "$_id",
           image: {
             $push: {
-              fileName: "$image.fileName",
-              url: "$image.url",
               id: "$image.id",
               eventName: "$image.eventName",
               eventId: "$image.eventId",

@@ -5,10 +5,10 @@ require("dotenv").config();
 async function compositeImages(file) {
   try {
     return await sharp(file.buffer)
-      .jpeg({ quality: 50 }) //壓縮
+      .jpeg({ quality: 25 }) //壓縮
       .composite([
         {
-          input: "src/assets/photo-pacer-810_410.png", //浮水印圖片
+          input: "src/assets/photo-pacer-2000_1025.png", //浮水印圖片
           tile: true, //平鋪
         },
       ])
