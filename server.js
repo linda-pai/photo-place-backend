@@ -261,7 +261,7 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:bib`, (req, res) => {
   const bid = req.params.bib;
   const eventId = req.params.eventId;
 
-  const countsPerPage = 100;
+  const countsPerPage = 40;
   const page = req.query.page - 1 || 0;
 
   db.collection(`imagecollection/${eventId}`)
