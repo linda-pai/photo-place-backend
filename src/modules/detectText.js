@@ -61,4 +61,15 @@ const uploadToS3andDetectText = (file, path) => {
   });
 };
 
-module.exports = { uploadToS3andDetectText };
+const getDetectedByKey = async (detectKey) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const detectedNumbers = await getDetectedNumbers(detectKey);
+      resolve(detectedNumbers);
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
+module.exports = { uploadToS3andDetectText, getDetectedByKey };

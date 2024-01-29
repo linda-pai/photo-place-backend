@@ -11,13 +11,17 @@ const mongoUtil = require("./src/database/mongoUtil");
 const dotenv = require("dotenv");
 dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
-const { uploadToS3, multerUploader } = require("./src/modules/uploadModules");
-const { getWatermarkedImageUrl } = require("./src/modules/drawWatermark");
 const {
-  getWatermarkedImageUrlFromRemote,
-} = require("./src/modules/drawWatermarkFromRemote");
+  uploadToS3,
+  multerUploader,
+  getSignedUploadURL,
+} = require("./src/modules/uploadModules");
+const { getWatermarkedImageUrl } = require("./src/modules/drawWatermark");
 
-const { uploadToS3andDetectText } = require("./src/modules/detectText");
+const {
+  uploadToS3andDetectText,
+  getDetectedByKey,
+} = require("./src/modules/detectText");
 
 var utc = require("dayjs/plugin/utc");
 dayjs.extend(utc);
@@ -107,6 +111,71 @@ app.get(`${apiRoot}/user/getUserInfo/:token`, async (req, res) => {
     });
 });
 
+//取得上傳圖片的簽名網址
+app.post(`${apiRoot}/images/getSignedUploadURL`, async (req, res) => {
+  const { signedUrl, key } = await getSignedUploadURL(
+    req.body.fileName,
+    "/" + req.body.eventId + "/"
+  );
+  res.send({ signedUrl, key });
+});
+
+//1. detectText  2. drawWatermark  3. uploadToS3 by bucketKey
+app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
+  const { key, eventId, fileName, author, uploadId } = req.body;
+
+  const detectedNumbers = await getDetectedByKey(key);
+  const watermarkedImage = await getWatermarkedImageUrl(
+    key,
+    "/" + eventId + "/",
+    fileName
+  );
+
+  return Promise.all([detectedNumbers, watermarkedImage]).then(
+    async (response) => {
+      const { watermarkedUrl } = response[1];
+
+      const data = {
+        id: "img-" + UUID.v4(),
+        url: process.env.AWS_BUCKET_URL + "/" + key,
+        watermarkedUrl,
+        fileName,
+        price: 109,
+        eventId,
+        author,
+        uploadId,
+      };
+
+      try {
+        const paths =
+          detectedNumbers.length > 0
+            ? detectedNumbers
+            : [{ DetectedText: "common" }];
+
+        const pathList = paths.map(({ DetectedText }) => DetectedText);
+
+        const imageObj = {
+          path: pathList,
+          image: data,
+          author,
+          uploadId,
+        };
+
+        await db.collection(`imagecollection/${eventId}`).insertOne(imageObj);
+      } catch (error) {
+        console.log("DetectedText-err", error);
+        res.json({ error: "新增失敗" });
+      }
+
+      res.status(200).json({
+        message: "上傳成功",
+        data,
+        progress: 100,
+      });
+    }
+  );
+});
+
 //上傳圖片
 app.post(
   `${apiRoot}/images/uploadAndDetectText`,
@@ -175,54 +244,54 @@ app.post(
 );
 
 //update 圖片 watermarkedUrl by imageId
-app.put(`${apiRoot}/images/updateWatermarkedUrl/:eventId`, (req, res) => {
-  const eventId = req.params.eventId;
+// app.put(`${apiRoot}/images/updateWatermarkedUrl/:eventId`, (req, res) => {
+//   const eventId = req.params.eventId;
 
-  const updateWatermarkedUrl = async (eventId) => {
-    const images = await db
-      .collection(`imagecollection/${eventId}`)
-      .find({})
-      .limit(20)
-      .skip(1600)
-      .toArray();
+//   const updateWatermarkedUrl = async (eventId) => {
+//     const images = await db
+//       .collection(`imagecollection/${eventId}`)
+//       .find({})
+//       .limit(20)
+//       .skip(1600)
+//       .toArray();
 
-    const flattenData = images.map((item) => item.image).flat();
-    console.log("flattenData.length", flattenData.length);
+//     const flattenData = images.map((item) => item.image).flat();
+//     console.log("flattenData.length", flattenData.length);
 
-    for (var x = 0, ln = flattenData.length; x < ln; x++) {
-      setTimeout(
-        function (y) {
-          uploadSinglePhoto(y);
-        },
-        x * 1500,
-        x
-      );
-    }
+//     for (let x = 0, ln = flattenData.length; x < ln; x++) {
+//       setTimeout(
+//         function (y) {
+//           uploadSinglePhoto(y);
+//         },
+//         x * 1500,
+//         x
+//       );
+//     }
 
-    const uploadSinglePhoto = async (x) => {
-      const watermarkedImage = await getWatermarkedImageUrlFromRemote(
-        flattenData[x].url,
-        "/" + eventId + "/"
-      );
+//     const uploadSinglePhoto = async (x) => {
+//       const watermarkedImage = await getWatermarkedImageUrlFromRemote(
+//         flattenData[x].url,
+//         "/" + eventId + "/"
+//       );
 
-      db.collection(`imagecollection/${eventId}`).updateOne(
-        { "image.id": flattenData[x].id },
-        {
-          $set: {
-            "image.$.watermarkedUrl": watermarkedImage.watermarkedUrl,
-          },
-        }
-      );
+//       db.collection(`imagecollection/${eventId}`).updateOne(
+//         { "image.id": flattenData[x].id },
+//         {
+//           $set: {
+//             "image.$.watermarkedUrl": watermarkedImage.watermarkedUrl,
+//           },
+//         }
+//       );
 
-      console.log(
-        "success!!!watermarkedImage \n",
-        watermarkedImage.watermarkedUrl
-      );
-    };
-  };
+//       console.log(
+//         "success!!!watermarkedImage \n",
+//         watermarkedImage.watermarkedUrl
+//       );
+//     };
+//   };
 
-  updateWatermarkedUrl(eventId);
-});
+//   updateWatermarkedUrl(eventId);
+// });
 
 //紀錄上傳資訊
 app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
