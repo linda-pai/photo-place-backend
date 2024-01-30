@@ -6,13 +6,13 @@ AWS.config.update({ region: process.env.AWS_REGION });
 
 const client = new AWS.Rekognition();
 
-const getDetectedNumbers = async (fileName) => {
+const getDetectedNumbers = async (detectKey) => {
   return new Promise((resolve, reject) => {
     const params = {
       Image: {
         S3Object: {
           Bucket: process.env.AWS_BUCKET_NAME,
-          Name: fileName,
+          Name: detectKey,
         },
       },
     };
@@ -53,7 +53,7 @@ const uploadToS3andDetectText = (file, path) => {
       resolve({
         originImageUrl: result.Location,
         detectedNumbers,
-        fileName: result.key,
+        fileName: file.originalname || result.key,
       });
     } catch (error) {
       reject(error);
@@ -61,4 +61,15 @@ const uploadToS3andDetectText = (file, path) => {
   });
 };
 
-module.exports = { uploadToS3andDetectText };
+const getDetectedByKey = async (detectKey) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const detectedNumbers = await getDetectedNumbers(detectKey);
+      resolve(detectedNumbers);
+    } catch (error) {
+      reject(error);
+    }
+  });
+};
+
+module.exports = { uploadToS3andDetectText, getDetectedByKey };

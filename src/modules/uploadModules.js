@@ -34,6 +34,21 @@ const uploadToS3 = async (file, customPath) => {
   });
 };
 
+const getS3Object = async (key) => {
+  return new Promise((resolve, reject) => {
+    const params = {
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+    };
+    s3.getObject(params, (error, data) => {
+      if (error) {
+        reject(error);
+      }
+      resolve(data);
+    });
+  });
+};
+
 const multerUploader = multer({
   fileFilter: (req, file, done) => {
     if (
@@ -48,4 +63,27 @@ const multerUploader = multer({
   },
 });
 
-module.exports = { uploadToS3, multerUploader };
+const getSignedUploadURL = async (fileName, customPath) => {
+  const path = customPath || "/";
+  const key =
+    `images${path}` + sha256(fileName + new Date().toString()) + "-" + fileName;
+
+  let signedUrl = await s3.getSignedUrlPromise("putObject", {
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: key,
+    Expires: 120,
+    ContentType: "image/*",
+  });
+
+  return {
+    signedUrl,
+    key,
+  };
+};
+
+module.exports = {
+  uploadToS3,
+  getS3Object,
+  multerUploader,
+  getSignedUploadURL,
+};
