@@ -742,8 +742,6 @@ app.post(`${apiRoot}/linepay/request`, async (req, res) => {
     price: item.price,
   }));
 
-  console.log("refinedProducts", refinedProducts);
-
   const linePayRequest = await linePay(orderId, amount, refinedProducts);
 
   res.send({ status: "success", result: linePayRequest });
@@ -773,7 +771,6 @@ app.post(`${apiRoot}/newebpay/notify`, async (req, res) => {
   // 解密交易內容
   const response = req.body;
   const data = createSesDecrypt(response.TradeInfo);
-  console.log("data:", data);
   // 使用 HASH 再次 SHA 加密字串，確保比對一致（確保不正確的請求觸發交易成功）
   const thisShaEncrypt = createShaEncrypt(res.TradeInfo);
   if (!thisShaEncrypt === res.TradeSha) {

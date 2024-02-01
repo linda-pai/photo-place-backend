@@ -19,7 +19,6 @@ const newebPay = async (data) => {
 
   // 使用 HASH 再次 SHA 加密字串，作為驗證使用
   const shaEncrypt = createShaEncrypt(aesEncrypt);
-  console.log("shaEncrypt:", shaEncrypt);
   order.TradeInfo = aesEncrypt;
   order.TradeSha = shaEncrypt;
   order.MerchantID = process.env.MerchantID;
