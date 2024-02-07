@@ -4,6 +4,14 @@ const UUID = require("uuid");
 const emailSender = require("./src/modules/emailSender");
 const session = require("cookie-session");
 const dayjs = require("dayjs");
+const linePay = require("./src/modules/linePay/linePay");
+const linePayConfirm = require("./src/modules/linePay/linePayConfirm");
+
+const newebPay = require("./src/modules/newebpay/newebPay");
+const createSesDecrypt = require("./src/modules/newebpay/createSesDecrypt");
+const createShaEncrypt = require("./src/modules/newebpay/createShaEncrypt");
+
+const paymentConst = require("./src/lib/constants");
 
 const userRouter = require("./src/routes/user");
 
@@ -122,7 +130,7 @@ app.post(`${apiRoot}/images/getSignedUploadURL`, async (req, res) => {
 
 //1. detectText  2. drawWatermark  3. uploadToS3 by bucketKey
 app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
-  const { key, eventId, fileName, author, uploadId } = req.body;
+  const { key, eventId, fileName, author, uploadId, price } = req.body;
 
   const detectedNumbers = await getDetectedByKey(key);
   const watermarkedImage = await getWatermarkedImageUrl(
@@ -140,7 +148,7 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
         url: process.env.AWS_BUCKET_URL + "/" + key,
         watermarkedUrl,
         fileName,
-        price: 109,
+        price,
         eventId,
         author,
         uploadId,
@@ -176,72 +184,72 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
   );
 });
 
-//上傳圖片
-app.post(
-  `${apiRoot}/images/uploadAndDetectText`,
-  multerUploader.single("file"),
-  async (req, res) => {
-    //取得 lastModified from req.file
-    if (!req.file) return res.json({ error: "沒有檔案" });
-    TODO: try {
-      return Promise.all([
-        uploadToS3andDetectText(req.file, "/" + req.body.eventId + "/"), //1. 上傳圖片到S3   -> 辨識號碼               (拿到 originImageUrl & 辨識號碼)
-        getWatermarkedImageUrl(req.file, "/" + req.body.eventId + "/"), //2. 產生浮水印圖片 -> 上傳浮水印圖片到S3        (拿到 watermarkedImageUrl)
-      ])
-        .then(async (response) => {
-          const { originImageUrl, detectedNumbers, fileName } = response[0];
-          const { watermarkedUrl } = response[1];
-          const { eventId, author, uploadId } = req.body;
+//上傳圖片 deprecated
+// app.post(
+//   `${apiRoot}/images/uploadAndDetectText`,
+//   multerUploader.single("file"),
+//   async (req, res) => {
+//     //取得 lastModified from req.file
+//     if (!req.file) return res.json({ error: "沒有檔案" });
+//     TODO: try {
+//       return Promise.all([
+//         uploadToS3andDetectText(req.file, "/" + req.body.eventId + "/"), //1. 上傳圖片到S3   -> 辨識號碼               (拿到 originImageUrl & 辨識號碼)
+//         getWatermarkedImageUrl(req.file, "/" + req.body.eventId + "/"), //2. 產生浮水印圖片 -> 上傳浮水印圖片到S3        (拿到 watermarkedImageUrl)
+//       ])
+//         .then(async (response) => {
+//           const { originImageUrl, detectedNumbers, fileName } = response[0];
+//           const { watermarkedUrl } = response[1];
+//           const { eventId, author, uploadId } = req.body;
 
-          const data = {
-            id: "img-" + UUID.v4(),
-            url: originImageUrl,
-            watermarkedUrl,
-            fileName,
-            price: 109,
-            ...req.body,
-          };
-          //依照 eventId 傳到不同的 collection
-          //path: detectedNumbers or common
-          try {
-            const paths =
-              detectedNumbers.length > 0
-                ? detectedNumbers
-                : [{ DetectedText: "common" }];
+//           const data = {
+//             id: "img-" + UUID.v4(),
+//             url: originImageUrl,
+//             watermarkedUrl,
+//             fileName,
+//             price: 109,
+//             ...req.body,
+//           };
+//           //依照 eventId 傳到不同的 collection
+//           //path: detectedNumbers or common
+//           try {
+//             const paths =
+//               detectedNumbers.length > 0
+//                 ? detectedNumbers
+//                 : [{ DetectedText: "common" }];
 
-            const pathList = paths.map(({ DetectedText }) => DetectedText);
+//             const pathList = paths.map(({ DetectedText }) => DetectedText);
 
-            const imageObj = {
-              path: pathList,
-              image: data,
-              author,
-              uploadId,
-            };
+//             const imageObj = {
+//               path: pathList,
+//               image: data,
+//               author,
+//               uploadId,
+//             };
 
-            await db
-              .collection(`imagecollection/${eventId}`)
-              .insertOne(imageObj);
-          } catch (error) {
-            console.log("DetectedText-err", error);
-            res.json({ error: "新增失敗" });
-          }
+//             await db
+//               .collection(`imagecollection/${eventId}`)
+//               .insertOne(imageObj);
+//           } catch (error) {
+//             console.log("DetectedText-err", error);
+//             res.json({ error: "新增失敗" });
+//           }
 
-          res.status(200).json({
-            message: "上傳成功",
-            data,
-            progress: 100,
-          });
-        })
-        .catch((err) => {
-          console.log("err", err);
-          res.json({ error: "新增失敗" });
-        });
-    } catch (error) {
-      console.log(error);
-      res.json({ error: "新增失敗" });
-    }
-  }
-);
+//           res.status(200).json({
+//             message: "上傳成功",
+//             data,
+//             progress: 100,
+//           });
+//         })
+//         .catch((err) => {
+//           console.log("err", err);
+//           res.json({ error: "新增失敗" });
+//         });
+//     } catch (error) {
+//       console.log(error);
+//       res.json({ error: "新增失敗" });
+//     }
+//   }
+// );
 
 //update 圖片 watermarkedUrl by imageId
 // app.put(`${apiRoot}/images/updateWatermarkedUrl/:eventId`, (req, res) => {
@@ -325,6 +333,38 @@ app.get(`${apiRoot}/images/getUploadInfo/:author`, (req, res) => {
     });
 });
 
+//紀錄上傳資訊
+app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
+  const TimeStamp = dayjs().utcOffset(8).format("YYYYMMDDHHmmss");
+  const data = {
+    ...req.body,
+    createAt: TimeStamp,
+    paidAt: null,
+  };
+
+  const author = req.body.author;
+  if (!author) return res.json({ message: "新增失敗" });
+
+  db.collection(`uploadIntocollection`)
+    .insertOne(data)
+    .then(() => res.json({ message: "新增成功" }))
+    .catch((error) => {
+      console.log("add-error", error);
+      return res.json({ message: "新增失敗" });
+    });
+});
+
+//查詢上傳資訊 by author
+app.get(`${apiRoot}/images/getUploadInfo/:author`, (req, res) => {
+  const author = req.params.author;
+
+  db.collection(`uploadIntocollection`)
+    .find({ author })
+    .toArray((error, result) => {
+      res.send(result);
+    });
+});
+
 //查詢圖片 by 號碼布 & event_id
 app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:bib`, (req, res) => {
   const bid = req.params.bib;
@@ -360,6 +400,7 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:bib`, (req, res) => {
               eventName: "$image.eventName",
               eventId: "$image.eventId",
               watermarkedUrl: "$image.watermarkedUrl",
+              price: "$image.price",
             },
           },
         },
@@ -560,13 +601,11 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
             <p> 至以下網址查看訂單明細：${
               process.env.CLIENT_DOMAIN
             }/user/orders</p>
-            <p> ----------------------------------------------------------------</p> 
             <p>訂單編號：${orderData.orderId} </p> 
             <p>訂單金額：TWD ${orderData.totalAmount}</p>  
             <p>訂單時間：${dayjs(orderData.createAt)
               .utcOffset(8)
               .format("YYYY-MM-DD HH:mm:ss")} </p> 
-            <p>----------------------------------------------------------------</p> 
             <p>感謝您的購買，祝您有美好的一天！</p> 
             <p>如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
             <p>📷 PHOTO PACER 攝影小隊 </p> 
@@ -615,51 +654,64 @@ app.get(`${apiRoot}/orders/getByUser/:orderBy`, (req, res) => {
     });
 });
 
-//付款 - 更新訂單 paidAt
+const sendOrderSuccessEmail = async (orderId) => {
+  db.collection("ordercollection")
+    .findOne({ orderId })
+    .then(async (result) => {
+      const { orderBy } = result;
+
+      const user = await db
+        .collection("usercollection")
+        .find({ userId: orderBy })
+        .project({ token: 1, email: 1, name: 1, userId: 1 })
+        .toArray();
+      //寄信
+      try {
+        if (user[0]?.email)
+          await emailSender({
+            email: user[0]?.email,
+            subject: "攝影小隊 - 訂單付款成功通知",
+            html: `
+            <div>
+              <div style={{ margin:0 auto }}>
+                <h2> Hi ${user[0].name}，您的訂單已付款成功，</h2> 
+                <p>即可到訂單查詢頁下載照片：${process.env.CLIENT_DOMAIN}/user/orders</p>
+                <p>感謝您的購買，期待下次我們賽道再相見！</p> 
+                <p>⬇️⬇️ 如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
+                <p>📷 PHOTO PACER 攝影小隊 </p> 
+                <p>聯絡信箱： photopacer@gmail.com</p>
+                <div>
+                  <p>官方Line：@774uebxu</p>
+                  <img src=${process.env.AWS_BUCKET_URL}/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
+                </div>
+              </div>
+              <img src=${process.env.AWS_BUCKET_URL}/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
+            </div>
+          `,
+          });
+      } catch (error) {
+        "sendOrderSuccessEmail-error", error;
+      }
+    });
+};
+
+//付款 - 更新訂單
 app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
   db.collection("ordercollection")
     .updateOne(
       { orderId: req.params.orderId },
       {
         $set: {
-          paidAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+          ...req.body,
         },
       }
     )
     .then(async () => {
-      const user = await db
-        .collection("usercollection")
-        .find({ userId: req.body.orderBy })
-        .project({ token: 1, email: 1, name: 1, userId: 1 })
-        .toArray();
-
-      //寄信
-      if (user[0]?.email)
-        await emailSender({
-          email: user[0]?.email,
-          subject: "攝影小隊 - 訂單付款成功通知",
-          html: `
-        <div>
-          <div style={{ margin:0 auto }}>
-            <h2> Hi ${user[0].name}，您的訂單已付款成功，</h2> 
-            <p> 請至以下網址下載照片：${process.env.CLIENT_DOMAIN}/user/orders</p>
-            <p> ----------------------------------------------------------------</p> 
-            <p>感謝您的購買，祝您有美好的一天！</p> 
-            <p>⬇️⬇️ 如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
-            <p>📷 PHOTO PACER 攝影小隊 </p> 
-            <p>聯絡信箱： photopacer@gmail.com</p>
-            <div>
-              <p>官方Line：@774uebxu</p>
-              <img src=${process.env.AWS_BUCKET_URL}/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
-            </div>
-          </div>
-          <img src=${process.env.AWS_BUCKET_URL}/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
-        </div>
-        `,
-        });
+      if (req.body.paidAt) {
+        await sendOrderSuccessEmail(req.params.orderId);
+      }
       res.json({ message: "更新成功" });
     })
-
     .catch((error) => {
       console.log("update-error", error);
       return res.json({ message: "更新失敗" });
@@ -685,4 +737,101 @@ app.get(`${apiRoot}/orders`, (req, res) => {
     .toArray((error, result) => {
       res.send(result);
     });
+});
+
+//line pay request
+app.post(`${apiRoot}/linepay/request`, async (req, res) => {
+  const { orderId, amount, items, isMobile } = req.body;
+
+  const refinedProducts = items.map((item) => ({
+    id: item.id,
+    name: item.eventName + " " + item.id,
+    imageUrl: item.watermarkedUrl,
+    quantity: 1,
+    price: item.price,
+  }));
+
+  const linePayRequest = await linePay(
+    orderId,
+    amount,
+    refinedProducts,
+    isMobile
+  );
+  res.send({ status: "success", result: linePayRequest });
+});
+
+const updateOrderPaidAt = async (orderId, transactionId, paymentMethod) => {
+  db.collection("ordercollection").updateOne(
+    {
+      orderId,
+    },
+    {
+      $set: {
+        paidAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+        transactionId,
+        paymentMethod,
+      },
+    }
+  );
+};
+//linePay confirm
+app.post(`${apiRoot}/linepay/confirm`, async (req, res) => {
+  const { orderId, transactionId } = req.body;
+
+  //查詢訂單金額
+  const order = await db
+    .collection("ordercollection")
+    .find({ orderId })
+    .toArray();
+
+  const amount = order[0].totalAmount;
+
+  const linePayResult = await linePayConfirm(transactionId, amount);
+
+  try {
+    if (linePayResult.returnCode === "0000") {
+      await updateOrderPaidAt(orderId, transactionId, paymentConst.LINE_PAY);
+      await sendOrderSuccessEmail(orderId);
+
+      res.send({ status: "success", result: linePayResult });
+    }
+  } catch (error) {
+    res.send({ status: "fail", result: linePayResult });
+  }
+});
+
+app.post(`${apiRoot}/newebpay/request`, async (req, res) => {
+  const data = req.body;
+  const encryptOrder = await newebPay(data);
+
+  res.send({
+    status: "success",
+    result: encryptOrder,
+    url: process.env.NEWEBPAY_PGW_URL,
+  });
+});
+
+app.post(`${apiRoot}/newebpay/decrypt`, async (req, res) => {
+  const data = createSesDecrypt(req.body.TradeInfo);
+  if (data.Status === "SUCCESS") {
+    const { ItemDesc, TradeNo } = data.Result;
+    await updateOrderPaidAt(ItemDesc, TradeNo, paymentConst.NEWEB_PAY);
+    await sendOrderSuccessEmail(ItemDesc);
+    res.send({ status: "success", ...data });
+  } else {
+    res.send({ status: "fail", ...data });
+  }
+});
+
+app.post(`${apiRoot}/newebpay/notify`, async (req, res) => {
+  // 解密交易內容
+  const response = req.body;
+  const data = createSesDecrypt(response.TradeInfo);
+  // 使用 HASH 再次 SHA 加密字串，確保比對一致（確保不正確的請求觸發交易成功）
+  const thisShaEncrypt = createShaEncrypt(res.TradeInfo);
+  if (!thisShaEncrypt === res.TradeSha) {
+    console.log("付款失敗：TradeSha 不一致");
+    return res.end();
+  }
+  return res.end();
 });
