@@ -4,7 +4,7 @@ dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 const uri = `/v3/payments/request`;
 
-const linePay = async (orderId, amount, refinedProducts) => {
+const linePay = async (orderId, amount, refinedProducts, isMobile) => {
   const requestBody = JSON.stringify({
     orderId,
     amount,
@@ -18,6 +18,7 @@ const linePay = async (orderId, amount, refinedProducts) => {
     ],
     redirectUrls: {
       confirmUrl: process.env.LINE_PAY_CONFIRM_URL,
+      confirmUrlType: isMobile ? "SERVER" : "CLIENT", // "CLIENT" or "SERVER
       cancelUrl: process.env.LINE_PAY_CANCEL_URL,
     },
     options: {
