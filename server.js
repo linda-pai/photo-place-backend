@@ -130,7 +130,8 @@ app.post(`${apiRoot}/images/getSignedUploadURL`, async (req, res) => {
 
 //1. detectText  2. drawWatermark  3. uploadToS3 by bucketKey
 app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
-  const { key, eventId, fileName, author, uploadId, price } = req.body;
+  const { key, eventId, author, uploadId, price, fileName, lastModified } =
+    req.body;
 
   const detectedNumbers = await getDetectedByKey(key);
   const watermarkedImage = await getWatermarkedImageUrl(
@@ -152,6 +153,7 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
         eventId,
         author,
         uploadId,
+        lastModified,
       };
 
       try {
@@ -401,12 +403,13 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:bib`, (req, res) => {
               eventId: "$image.eventId",
               watermarkedUrl: "$image.watermarkedUrl",
               price: "$image.price",
+              lastModified: "$image.lastModified",
             },
           },
         },
       },
     ])
-    .sort({ _id: 1 })
+    .sort({ "image.lastModified": -1 })
     .skip(page * countsPerPage)
     .limit(countsPerPage)
     .toArray((error, result) => {
