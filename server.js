@@ -409,7 +409,7 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:bib`, (req, res) => {
         },
       },
     ])
-    .sort({ "image.lastModified": -1 })
+    .sort({ "image.lastModified": 1 })
     .skip(page * countsPerPage)
     .limit(countsPerPage)
     .toArray((error, result) => {
