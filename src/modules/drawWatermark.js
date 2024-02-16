@@ -7,12 +7,15 @@ async function compositeImages(bucketKey) {
     return getS3Object(bucketKey).then(async (data) => {
       // return await sharp(file.buffer)
       return await sharp(data.Body)
-        //等比resize
-        // .resize({ width: 1025 })
+        .resize({
+          height: 1500,
+          withoutEnlargement: true,
+          fit: "outside",
+        })
         .jpeg({ quality: 25 }) //壓縮
         .composite([
           {
-            input: "src/assets/photo-pacer-2000_1025.png", //浮水印圖片
+            input: "src/assets/photo-pacer-976_500.png", //浮水印圖片
             tile: true, //平鋪
           },
         ])
