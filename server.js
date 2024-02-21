@@ -130,8 +130,16 @@ app.post(`${apiRoot}/images/getSignedUploadURL`, async (req, res) => {
 
 //1. detectText  2. drawWatermark  3. uploadToS3 by bucketKey
 app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
-  const { key, eventId, author, uploadId, price, fileName, lastModified } =
-    req.body;
+  const {
+    key,
+    eventId,
+    eventName,
+    author,
+    uploadId,
+    price,
+    fileName,
+    lastModified,
+  } = req.body;
 
   const detectedNumbers = await getDetectedByKey(key);
   const watermarkedImage = await getWatermarkedImageUrl(
@@ -151,6 +159,7 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
         fileName,
         price,
         eventId,
+        eventName,
         author,
         uploadId,
         lastModified,
@@ -309,13 +318,13 @@ app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
   const data = {
     ...req.body,
     createAt: TimeStamp,
-    paidAt: null,
+    chargeAt: null,
   };
 
   const author = req.body.author;
   if (!author) return res.json({ message: "新增失敗" });
 
-  db.collection(`uploadIntocollection`)
+  db.collection(`uploadInfocollection`)
     .insertOne(data)
     .then(() => res.json({ message: "新增成功" }))
     .catch((error) => {
@@ -328,40 +337,9 @@ app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
 app.get(`${apiRoot}/images/getUploadInfo/:author`, (req, res) => {
   const author = req.params.author;
 
-  db.collection(`uploadIntocollection`)
+  db.collection(`uploadInfocollection`)
     .find({ author })
-    .toArray((error, result) => {
-      res.send(result);
-    });
-});
-
-//紀錄上傳資訊
-app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
-  const TimeStamp = dayjs().utcOffset(8).format("YYYYMMDDHHmmss");
-  const data = {
-    ...req.body,
-    createAt: TimeStamp,
-    paidAt: null,
-  };
-
-  const author = req.body.author;
-  if (!author) return res.json({ message: "新增失敗" });
-
-  db.collection(`uploadIntocollection`)
-    .insertOne(data)
-    .then(() => res.json({ message: "新增成功" }))
-    .catch((error) => {
-      console.log("add-error", error);
-      return res.json({ message: "新增失敗" });
-    });
-});
-
-//查詢上傳資訊 by author
-app.get(`${apiRoot}/images/getUploadInfo/:author`, (req, res) => {
-  const author = req.params.author;
-
-  db.collection(`uploadIntocollection`)
-    .find({ author })
+    .sort({ createAt: -1 })
     .toArray((error, result) => {
       res.send(result);
     });
@@ -698,6 +676,41 @@ const sendOrderSuccessEmail = async (orderId) => {
     });
 };
 
+const sendSoldEmail = async (author, soldCount) => {
+  const user = await db
+    .collection("usercollection")
+    .find({ userId: author })
+    .project({ token: 1, email: 1, name: 1, userId: 1 })
+    .toArray();
+  //寄信
+  try {
+    if (user[0]?.email)
+      await emailSender({
+        email: user[0]?.email,
+        subject: "攝影小隊 - 照片售出通知🎉🎉🎉",
+        html: `
+            <div>
+              <div style={{ margin:0 auto }}>
+                <h2> Hi ${user[0].name}，您的照片已售出 ${soldCount}張照片，</h2> 
+                <p>查看更多細節 - 上傳紀錄頁：${process.env.CLIENT_DOMAIN}/photographer/uploadDetail</p>
+                <p>很高興有機會幫助您賣出照片，期待您下次更多優秀作品！</p>
+                <p>⬇️⬇️ 如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
+                <p>📷 PHOTO PACER 攝影小隊 </p> 
+                <p>聯絡信箱： photopacer@gmail.com</p>
+                <div>
+                  <p>官方Line：@774uebxu</p>
+                  <img src=${process.env.AWS_BUCKET_URL}/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
+                </div>
+              </div>
+              <img src=${process.env.AWS_BUCKET_URL}/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
+            </div>
+            `,
+      });
+  } catch (error) {
+    "sendSoldEmail-error", error;
+  }
+};
+
 //付款 - 更新訂單
 app.put(`${apiRoot}/orders/update/:orderId`, async (req, res) => {
   db.collection("ordercollection")
@@ -777,6 +790,72 @@ const updateOrderPaidAt = async (orderId, transactionId, paymentMethod) => {
     }
   );
 };
+
+const updateUploadInfoSellInfo = async (orderId) => {
+  const order = await db
+    .collection("ordercollection")
+    .find({ orderId })
+    .toArray();
+
+  const eventIdList = order[0].items.map((item) => item.eventId);
+  //remove dulplicate eventId
+  const eventIdListUnique = [...new Set(eventIdList)];
+  const imagesList = order[0].items.map((item) => item.id);
+
+  eventIdListUnique.forEach(async (eventId) => {
+    const images = await db
+      .collection(`imagecollection/${eventId}`)
+      .find({ "image.id": { $in: imagesList } })
+      .toArray();
+
+    //把 images 分類 by author and uploadId
+    const imagesByAuthor = images.reduce((acc, item) => {
+      const author = item.author;
+      const uploadId = item.uploadId;
+      if (!acc[author]) {
+        acc[author] = {};
+      }
+      if (!acc[author][uploadId]) {
+        acc[author][uploadId] = [];
+      }
+      acc[author][uploadId].push(item);
+      return acc;
+    }, {});
+
+    const imagesByAuthorList = Object.keys(imagesByAuthor);
+
+    imagesByAuthorList.forEach(async (author) => {
+      const uploadIdList = Object.keys(imagesByAuthor[author]);
+
+      uploadIdList.forEach(async (uploadId) => {
+        const images = imagesByAuthor[author][uploadId];
+        console.log("images", images);
+
+        await db.collection(`uploadInfocollection`).updateOne(
+          { uploadId },
+          {
+            $set: {
+              sellInfo: images.map((item) => {
+                const { id, watermarkedUrl, price, eventId } = item.image;
+                return {
+                  orderId,
+                  paymentMethod: order[0].paymentMethod,
+                  price,
+                  eventId,
+                  id,
+                  watermarkedUrl,
+                };
+              }),
+            },
+          }
+        );
+      });
+
+      await sendSoldEmail(author, images.length);
+    });
+  });
+};
+
 //linePay confirm
 app.post(`${apiRoot}/linepay/confirm`, async (req, res) => {
   const { orderId, transactionId } = req.body;
@@ -794,6 +873,8 @@ app.post(`${apiRoot}/linepay/confirm`, async (req, res) => {
   try {
     if (linePayResult.returnCode === "0000") {
       await updateOrderPaidAt(orderId, transactionId, paymentConst.LINE_PAY);
+      await updateUploadInfoSellInfo(orderId);
+
       await sendOrderSuccessEmail(orderId);
 
       res.send({ status: "success", result: linePayResult });
