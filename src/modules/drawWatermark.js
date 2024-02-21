@@ -12,7 +12,7 @@ async function compositeImages(bucketKey) {
           withoutEnlargement: true,
           fit: "outside",
         })
-        .jpeg({ quality: 25 }) //壓縮
+        .jpeg({ quality: 75 }) //壓縮
         .composite([
           {
             input: "src/assets/photo-pacer-976_500.png", //浮水印圖片
