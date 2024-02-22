@@ -920,13 +920,23 @@ app.post(`${apiRoot}/newebpay/notify`, async (req, res) => {
 
 //登記活動上傳完成通知資訊
 app.post(`${apiRoot}/imagesUploadComplete/notifyRecord`, async (req, res) => {
-  await db.collection(`notifycollection`).insertOne({
-    notifyId: "notify-" + UUID.v4().substring(0, 12),
-    creatAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
-    ...req.body,
-  });
+  //確認是否已經有相同的 email &notifyUrl
+  const { eventId, email, notifyUrl } = req.body;
+  const notifyRecord = await db
+    .collection(`notifycollection`)
+    .find({ eventId, email, notifyUrl })
+    .toArray();
 
-  res.send({ status: "success" });
+  if (notifyRecord.length > 0) {
+    return res.send({ status: 200, msg: "已經有登記過囉～" });
+  } else {
+    await db.collection(`notifycollection`).insertOne({
+      notifyId: "notify-" + UUID.v4().substring(0, 12),
+      creatAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+      ...req.body,
+    });
+    res.send({ status: 200, msg: "登記成功" });
+  }
 });
 
 //取得活動上傳完成通知資訊
@@ -961,10 +971,10 @@ app.post(
       await ImagesUploadEmailNotify(email, eventName, notifyUrl);
       await updateNotifyRecord(notifyId);
 
-      res.send({ status: "200" });
+      res.send({ status: 200 });
     } catch (error) {
       console.log("ImagesUploadEmailNotify-error", error);
-      res.send({ status: "500" });
+      res.send({ status: 500 });
     }
   }
 );
