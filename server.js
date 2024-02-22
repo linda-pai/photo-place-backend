@@ -829,8 +829,6 @@ const updateUploadInfoSellInfo = async (orderId) => {
 
       uploadIdList.forEach(async (uploadId) => {
         const images = imagesByAuthor[author][uploadId];
-        console.log("images", images);
-
         await db.collection(`uploadInfocollection`).updateOne(
           { uploadId },
           {
@@ -919,3 +917,125 @@ app.post(`${apiRoot}/newebpay/notify`, async (req, res) => {
   }
   return res.end();
 });
+
+//登記活動上傳完成通知資訊
+app.post(`${apiRoot}/imagesUploadComplete/notifyRecord`, async (req, res) => {
+  await db.collection(`notifycollection`).insertOne({
+    notifyId: "notify-" + UUID.v4().substring(0, 12),
+    creatAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+    ...req.body,
+  });
+
+  res.send({ status: "success" });
+});
+
+//取得活動上傳完成通知資訊
+app.get(
+  `${apiRoot}/imagesUploadComplete/notifyRecord/:eventId`,
+  async (req, res) => {
+    const eventId = req.params.eventId;
+
+    const notifyRecord = await db
+      .collection(`notifycollection`)
+      .find({ eventId })
+      .toArray();
+
+    res.send(notifyRecord);
+  }
+);
+
+//個別觸發上傳圖片完成通知
+app.post(
+  `${apiRoot}/imagesUploadComplete/sendEmail/:notifyId`,
+  async (req, res) => {
+    const notifyId = req.params.notifyId;
+
+    const notifyRecord = await db
+      .collection(`notifycollection`)
+      .find({ notifyId })
+      .toArray();
+
+    const { email, eventName, notifyUrl } = notifyRecord[0];
+
+    try {
+      await ImagesUploadEmailNotify(email, eventName, notifyUrl);
+      await updateNotifyRecord(notifyId);
+
+      res.send({ status: "200" });
+    } catch (error) {
+      console.log("ImagesUploadEmailNotify-error", error);
+      res.send({ status: "500" });
+    }
+  }
+);
+
+//一鍵觸發上傳圖片完成通知
+app.post(
+  `${apiRoot}/imagesUploadComplete/sendAllEmail/:eventId`,
+  async (req, res) => {
+    const eventId = req.params.eventId;
+
+    const notifyRecord = await db
+      .collection(`notifycollection`)
+      .find({ eventId })
+      .toArray();
+
+    notifyRecord.forEach(async (item) => {
+      const { email, eventName, notifyUrl } = item;
+
+      try {
+        await ImagesUploadEmailNotify(email, eventName, notifyUrl);
+        await updateNotifyRecord(item.notifyId);
+      } catch (error) {
+        console.log("ImagesUploadEmailNotify-error", error);
+      }
+    });
+
+    res.send({ status: "success" });
+  }
+);
+
+//update notifyRecord
+const updateNotifyRecord = async (notifyId) => {
+  await db.collection(`notifycollection`).updateOne(
+    { notifyId },
+    {
+      $set: {
+        status: "sent",
+        notifyAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+      },
+    }
+  );
+};
+
+//上傳圖片完成通知
+const ImagesUploadEmailNotify = async (email, eventName, notifyUrl) => {
+  try {
+    await emailSender({
+      email,
+      subject: `PHOTO PACER 攝影小隊 - 照片上傳完成通知: ${eventName}`,
+      html: `
+      <div>
+        <div style={{ margin:0 auto }}>
+          <h2>${eventName} 的照片已上傳完成，</h2>
+          <p>即可到 ${notifyUrl} 搜尋號碼布，尋找您的照片囉！</p>
+          <p>感謝您使用本平台，祝您有美好的一天！我們下次賽道再相見！</p>
+          <p>⬇️⬇️ 如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
+          <p>📷 PHOTO PACER 攝影小隊 </p> 
+          <p>聯絡信箱： photopacer@gmail.com</p>
+          <div>
+            <p>官方Line：@774uebxu</p>
+            <img src=${process.env.AWS_BUCKET_URL}/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
+          </div>
+        </div>
+        <img src=${process.env.AWS_BUCKET_URL}/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
+      </div>
+    `,
+    });
+
+    return { status: "200" };
+  } catch (error) {
+    console.log("ImagesUploadEmailNotify-error", error);
+    return { status: "500" };
+  }
+};
