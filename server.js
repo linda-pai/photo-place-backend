@@ -759,6 +759,20 @@ app.get(`${apiRoot}/orders`, (req, res) => {
 app.post(`${apiRoot}/linepay/request`, async (req, res) => {
   const { orderId, amount, items, isMobile } = req.body;
 
+  //確認是否已經付款
+  const isPaid = await db
+    .collection("ordercollection")
+    .find({
+      orderId: orderId,
+      //paidAt不等於null
+      paidAt: { $ne: null },
+    })
+    .toArray();
+
+  if (isPaid.length > 0) {
+    return res.send({ status: "paid", result: isPaid });
+  }
+
   const refinedProducts = items.map((item) => ({
     id: item.id,
     name: item.eventName + " " + item.id,
@@ -884,6 +898,19 @@ app.post(`${apiRoot}/linepay/confirm`, async (req, res) => {
 
 app.post(`${apiRoot}/newebpay/request`, async (req, res) => {
   const data = req.body;
+  //確認是否已經付款
+  const isPaid = await db
+    .collection("ordercollection")
+    .find({
+      orderId: data.orderId,
+      //paidAt不等於null
+      paidAt: { $ne: null },
+    })
+    .toArray();
+
+  if (isPaid.length > 0) {
+    return res.send({ status: "paid", result: isPaid });
+  }
   const encryptOrder = await newebPay(data);
 
   res.send({
