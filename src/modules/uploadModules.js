@@ -7,6 +7,7 @@ const awsConfig = {
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   region: process.env.AWS_REGION,
+  signatureVersion: "v4",
 };
 
 const s3 = new AWS.S3(awsConfig);
@@ -81,9 +82,33 @@ const getSignedUploadURL = async (fileName, customPath) => {
   };
 };
 
+const getSignedMultipartUploadURL = async (params) => {
+  let signedUrl = await s3.getSignedUrlPromise("uploadPart", params);
+
+  return {
+    signedUrl,
+  };
+};
+
+const createMultipartUpload = async (params) => {
+  const uploadId = await s3.createMultipartUpload(params).promise();
+
+  return {
+    uploadId: uploadId.UploadId,
+    key: uploadId.Key,
+  };
+};
+
+const completeMultipartUpload = async (params) => {
+  return await s3.completeMultipartUpload(params).promise();
+};
+
 module.exports = {
   uploadToS3,
   getS3Object,
   multerUploader,
   getSignedUploadURL,
+  getSignedMultipartUploadURL,
+  createMultipartUpload,
+  completeMultipartUpload,
 };

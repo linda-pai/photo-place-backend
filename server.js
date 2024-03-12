@@ -23,6 +23,9 @@ const {
   uploadToS3,
   multerUploader,
   getSignedUploadURL,
+  getSignedMultipartUploadURL,
+  createMultipartUpload,
+  completeMultipartUpload,
 } = require("./src/modules/uploadModules");
 const { getWatermarkedImageUrl } = require("./src/modules/drawWatermark");
 
@@ -1076,3 +1079,60 @@ const ImagesUploadEmailNotify = async (email, eventName, notifyUrl) => {
     return { status: "500" };
   }
 };
+
+//multipart upload
+
+app.get("/start-upload", async (req, res, next) => {
+  try {
+    let params = {
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: req.query.key,
+      ContentType: "image/*",
+    };
+
+    let uploadData = await createMultipartUpload(params);
+    res.send({ uploadId: uploadData.uploadId });
+  } catch (err) {
+    console.log("start-upload", err);
+  }
+});
+
+app.get("/get-upload-url", async (req, res, next) => {
+  const { partNumber, uploadId, key } = req.query;
+  try {
+    const url_expiration = process.env.AWS_URL_EXPIRATION || 1200;
+
+    let params = {
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+      UploadId: uploadId,
+      PartNumber: Number(partNumber),
+      Expires: parseInt(url_expiration),
+    };
+
+    const { signedUrl } = await getSignedMultipartUploadURL(params);
+
+    res.send({ preSignedURL: signedUrl, key });
+  } catch (err) {
+    console.log("get-upload-url", err);
+  }
+});
+
+app.post("/complete-upload", async (req, res, next) => {
+  try {
+    const { key, parts, uploadId } = req.body;
+    let params = {
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+      MultipartUpload: {
+        Parts: parts,
+      },
+      UploadId: uploadId,
+    };
+    let completeUploadPromised = await completeMultipartUpload(params);
+    res.send({ data: completeUploadPromised });
+  } catch (err) {
+    console.log("complete-upload", err);
+    res.send({ error: err });
+  }
+});
