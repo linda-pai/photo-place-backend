@@ -985,29 +985,25 @@ app.get(
 );
 
 //個別觸發上傳圖片完成通知
-app.post(
-  `${apiRoot}/imagesUploadComplete/sendEmail/:notifyId`,
-  async (req, res) => {
-    const notifyId = req.params.notifyId;
+app.post(`${apiRoot}/imagesUploadComplete/sendEmail`, async (req, res) => {
+  const { eventId, notifyId } = req.body;
+  const notifyRecord = await db
+    .collection(`notifycollection`)
+    .find({ eventId, notifyId })
+    .toArray();
 
-    const notifyRecord = await db
-      .collection(`notifycollection`)
-      .find({ notifyId })
-      .toArray();
+  const { email, eventName, notifyUrl } = notifyRecord[0];
 
-    const { email, eventName, notifyUrl } = notifyRecord[0];
+  try {
+    await ImagesUploadEmailNotify(email, eventName, notifyUrl);
+    await updateNotifyRecord(notifyId, eventId);
 
-    try {
-      await ImagesUploadEmailNotify(email, eventName, notifyUrl);
-      await updateNotifyRecord(notifyId);
-
-      res.send({ status: 200 });
-    } catch (error) {
-      console.log("ImagesUploadEmailNotify-error", error);
-      res.send({ status: 500 });
-    }
+    res.send({ status: 200 });
+  } catch (error) {
+    console.log("ImagesUploadEmailNotify-error", error);
+    res.send({ status: 500 });
   }
-);
+});
 
 //一鍵觸發上傳圖片完成通知
 app.post(
@@ -1025,7 +1021,7 @@ app.post(
 
       try {
         await ImagesUploadEmailNotify(email, eventName, notifyUrl);
-        await updateNotifyRecord(item.notifyId);
+        await updateNotifyRecord(item.notifyId, eventId);
       } catch (error) {
         console.log("ImagesUploadEmailNotify-error", error);
       }
@@ -1036,9 +1032,9 @@ app.post(
 );
 
 //update notifyRecord
-const updateNotifyRecord = async (notifyId) => {
+const updateNotifyRecord = async (notifyId, eventId) => {
   await db.collection(`notifycollection`).updateOne(
-    { notifyId },
+    { notifyId, eventId },
     {
       $set: {
         status: "sent",
