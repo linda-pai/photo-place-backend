@@ -1197,6 +1197,7 @@ app.get(
                 watermarkedUrl: "$image.watermarkedUrl",
                 price: "$image.price",
                 lastModified: "$image.lastModified",
+                isReleased: "$isReleased",
               },
             },
           },
