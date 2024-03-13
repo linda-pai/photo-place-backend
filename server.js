@@ -1198,6 +1198,7 @@ app.get(
                 price: "$image.price",
                 lastModified: "$image.lastModified",
                 isReleased: "$isReleased",
+                path: "$path",
               },
             },
           },
@@ -1223,6 +1224,15 @@ app.post(`${apiRoot}/images/release`, async (req, res) => {
       { "image.fileName": { $in: fileName } },
       { $set: { isReleased: true } }
     );
+
+  res.send({ status: 200 });
+});
+
+app.post(`${apiRoot}/images/updateBibs`, async (req, res) => {
+  const { eventId, imageId, bibs } = req.body;
+  await db
+    .collection(`imagecollection/${eventId}`)
+    .updateOne({ "image.id": imageId }, { $set: { path: bibs } });
 
   res.send({ status: 200 });
 });
