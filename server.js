@@ -615,32 +615,22 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
           subject: "攝影小隊 - 訂單成立通知",
           html: `
         <div>
-        
           <div style={{ margin:0 auto }}>
             <h2> Hi ${user[0].name}，您的訂單已成立，</h2> 
             <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
-            <p> 至以下網址查看訂單明細：${
-              process.env.CLIENT_DOMAIN
-            }/user/orders</p>
+            <p> 至以下網址查看訂單明細：${process.env.CLIENT_DOMAIN}/user/orders</p>
             <p>訂單編號：${orderData.orderId} </p> 
             <p>訂單金額：TWD ${orderData.totalAmount}</p>  
-            <p>訂單時間：${dayjs(orderData.createAt)
-              .utcOffset(8)
-              .format("YYYY-MM-DD HH:mm:ss")} </p> 
             <p>感謝您的購買，祝您有美好的一天！</p> 
             <p>如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
             <p>📷 PHOTO PACER 攝影小隊 </p> 
             <p>聯絡信箱： photopacer@gmail.com</p>
             <div>
               <p>官方Line：@774uebxu</p>
-              <img src=${
-                process.env.AWS_BUCKET_URL
-              }/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
+              <img src=${process.env.AWS_BUCKET_URL}/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
             </div>
           </div>
-          <img src=${
-            process.env.AWS_BUCKET_URL
-          }/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
+          <img src=${process.env.AWS_BUCKET_URL}/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
         </div>
         `,
         });
