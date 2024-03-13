@@ -569,6 +569,7 @@ app.post(
       eventId: "evt-" + UUID.v4().substring(0, 12),
       ...req.body,
       isShow: false, //TODO: 預設不顯示
+      isCompleteUpload: false, //TODO: 預設不顯示
     };
 
     db.collection("eventlistcollection")
