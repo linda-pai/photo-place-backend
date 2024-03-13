@@ -16,7 +16,7 @@ const uploadToS3 = async (file, customPath) => {
   const path = customPath || "/";
   return new Promise((resolve, reject) => {
     const key =
-      `images${path}` +
+      `images${process.env.AWS_BUCKET_PREFIX}${path}` +
       sha256(file.originalname + new Date().toString()) +
       "-" +
       file.originalname;
@@ -67,7 +67,10 @@ const multerUploader = multer({
 const getSignedUploadURL = async (fileName, customPath) => {
   const path = customPath || "/";
   const key =
-    `images${path}` + sha256(fileName + new Date().toString()) + "-" + fileName;
+    `images${process.env.AWS_BUCKET_PREFIX}${path}` +
+    sha256(fileName + new Date().toString()) +
+    "-" +
+    fileName;
 
   let signedUrl = await s3.getSignedUrlPromise("putObject", {
     Bucket: process.env.AWS_BUCKET_NAME,
@@ -90,9 +93,20 @@ const getSignedMultipartUploadURL = async (params) => {
   };
 };
 
-const createMultipartUpload = async (params) => {
-  const uploadId = await s3.createMultipartUpload(params).promise();
+const createMultipartUpload = async (path, fileName) => {
+  const key =
+    `images${process.env.AWS_BUCKET_PREFIX}${path}` +
+    sha256(fileName + new Date().toString()) +
+    "-" +
+    fileName;
 
+  let params = {
+    Bucket: process.env.AWS_BUCKET_NAME,
+    Key: key,
+    ContentType: "image/*",
+  };
+
+  const uploadId = await s3.createMultipartUpload(params).promise();
   return {
     uploadId: uploadId.UploadId,
     key: uploadId.Key,

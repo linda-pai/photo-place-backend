@@ -138,7 +138,7 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
     eventId,
     eventName,
     author,
-    uploadId,
+    uploadGroupId,
     price,
     fileName,
     lastModified,
@@ -164,7 +164,7 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
         eventId,
         eventName,
         author,
-        uploadId,
+        uploadGroupId,
         lastModified,
       };
 
@@ -180,7 +180,8 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
           path: pathList,
           image: data,
           author,
-          uploadId,
+          uploadGroupId,
+          isReleased: false,
         };
 
         await db.collection(`imagecollection/${eventId}`).insertOne(imageObj);
@@ -324,16 +325,46 @@ app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
     chargeAt: null,
   };
 
-  const author = req.body.author;
+  const { eventId, author, images } = req.body;
   if (!author) return res.json({ message: "新增失敗" });
 
+  //if author and eventId is not exist in uploadInfocollection
   db.collection(`uploadInfocollection`)
-    .insertOne(data)
-    .then(() => res.json({ message: "新增成功" }))
-    .catch((error) => {
-      console.log("add-error", error);
-      return res.json({ message: "新增失敗" });
+    .find({ author, eventId })
+    .toArray((error, result) => {
+      if (result.length === 0) {
+        db.collection(`uploadInfocollection`).insertOne(data);
+      } else {
+        //update images and lastEditTime
+        db.collection(`uploadInfocollection`).updateOne(
+          { author, eventId },
+          {
+            $set: {
+              images: [...result[0].images, ...images],
+              lastEditTime: TimeStamp,
+            },
+          }
+        );
+      }
+      res.json({ message: "新增成功" });
     });
+});
+
+//更新上傳資訊的 images
+app.post(`${apiRoot}/images/updateUploadInfo`, (req, res) => {
+  const TimeStamp = dayjs().utcOffset(8).format("YYYYMMDDHHmmss");
+  const { eventId, author, images } = req.body;
+
+  db.collection(`uploadInfocollection`).updateOne(
+    { author, eventId },
+    {
+      $set: {
+        images,
+        lastEditTime: TimeStamp,
+      },
+    }
+  );
+  res.json({ message: "更新成功" });
 });
 
 //查詢上傳資訊 by author
@@ -349,55 +380,60 @@ app.get(`${apiRoot}/images/getUploadInfo/:author`, (req, res) => {
 });
 
 //查詢圖片 by 號碼布 & event_id
-app.get(`${apiRoot}/images/getByPathAndEventId/:eventId/:bib`, (req, res) => {
-  const bid = req.params.bib;
-  const eventId = req.params.eventId;
+app.get(
+  `${apiRoot}/images/getByPathAndEventId/:eventId/:bib`,
+  async (req, res) => {
+    const bid = req.params.bib;
+    const eventId = req.params.eventId;
 
-  const countsPerPage = 40;
-  const page = req.query.page - 1 || 0;
+    const countsPerPage = 40;
+    const page = req.query.page - 1 || 0;
 
-  db.collection(`imagecollection/${eventId}`)
-    .aggregate([
-      {
-        $unwind: "$image",
-      },
-      {
-        $match: {
-          path:
-            bid === "all"
-              ? {
-                  $elemMatch: { $regex: new RegExp(".*") },
-                  $ne: "common",
-                }
-              : {
-                  $elemMatch: { $regex: new RegExp(".*" + bid + ".*") },
-                },
+    await db
+      .collection(`imagecollection/${eventId}`)
+      .aggregate([
+        {
+          $unwind: "$image",
         },
-      },
-      {
-        $group: {
-          _id: "$_id",
-          image: {
-            $push: {
-              id: "$image.id",
-              eventName: "$image.eventName",
-              eventId: "$image.eventId",
-              watermarkedUrl: "$image.watermarkedUrl",
-              price: "$image.price",
-              lastModified: "$image.lastModified",
+        {
+          $match: {
+            path:
+              bid === "all"
+                ? {
+                    $elemMatch: { $regex: new RegExp(".*") },
+                    $ne: "common",
+                  }
+                : {
+                    $elemMatch: { $regex: new RegExp(".*" + bid + ".*") },
+                  },
+            isReleased: true,
+          },
+        },
+        {
+          $group: {
+            _id: "$_id",
+            image: {
+              $push: {
+                id: "$image.id",
+                eventName: "$image.eventName",
+                eventId: "$image.eventId",
+                watermarkedUrl: "$image.watermarkedUrl",
+                price: "$image.price",
+                lastModified: "$image.lastModified",
+              },
             },
           },
         },
-      },
-    ])
-    .sort({ "image.lastModified": 1 })
-    .skip(page * countsPerPage)
-    .limit(countsPerPage)
-    .toArray((error, result) => {
-      const images = result.map((item) => item.image).flat();
-      res.send(images);
-    });
-});
+      ])
+      .sort({ "image.lastModified": 1 })
+      .skip(page * countsPerPage)
+      .limit(countsPerPage)
+      .toArray((error, result) => {
+        const images = result?.map((item) => item.image).flat();
+        res.send(images);
+      });
+  }
+);
 
 //取得所有圖片 count
 app.get(`${apiRoot}/images/getCount/:eventId`, async (req, res) => {
@@ -1080,14 +1116,11 @@ const ImagesUploadEmailNotify = async (email, eventName, notifyUrl) => {
 
 app.get("/start-upload", async (req, res, next) => {
   try {
-    let params = {
-      Bucket: process.env.AWS_BUCKET_NAME,
-      Key: req.query.key,
-      ContentType: "image/*",
-    };
+    const path = req.query.path;
+    const fileName = req.query.fileName;
 
-    let uploadData = await createMultipartUpload(params);
-    res.send({ uploadId: uploadData.uploadId });
+    let uploadData = await createMultipartUpload(path, fileName);
+    res.send(uploadData);
   } catch (err) {
     console.log("start-upload", err);
   }
@@ -1131,4 +1164,64 @@ app.post("/complete-upload", async (req, res, next) => {
     console.log("complete-upload", err);
     res.send({ error: err });
   }
+});
+
+app.get(
+  `${apiRoot}/images/getByUploadGroupId/:uploadGroupId`,
+  async (req, res) => {
+    const uploadGroupId = req.params.uploadGroupId;
+    const eventId = req.params.uploadGroupId.split("_")[0];
+
+    const countsPerPage = 40;
+    const page = req.query.page - 1 || 0;
+
+    await db
+      .collection(`imagecollection/${eventId}`)
+      .aggregate([
+        {
+          $unwind: "$image",
+        },
+        {
+          $match: {
+            uploadGroupId,
+          },
+        },
+        {
+          $group: {
+            _id: "$_id",
+            image: {
+              $push: {
+                id: "$image.id",
+                eventName: "$image.eventName",
+                eventId: "$image.eventId",
+                watermarkedUrl: "$image.watermarkedUrl",
+                price: "$image.price",
+                lastModified: "$image.lastModified",
+              },
+            },
+          },
+        },
+      ])
+      .sort({ "image.lastModified": 1 })
+      .skip(page * countsPerPage)
+      .limit(countsPerPage)
+      .toArray((error, result) => {
+        const images = result?.map((item) => item.image).flat();
+        res.send(images);
+      });
+  }
+);
+
+app.post(`${apiRoot}/images/release`, async (req, res) => {
+  const { eventId, images } = req.body;
+  const fileName = images.map((item) => item.path);
+
+  await db
+    .collection(`imagecollection/${eventId}`)
+    .updateMany(
+      { "image.fileName": { $in: fileName } },
+      { $set: { isReleased: true } }
+    );
+
+  res.send({ status: 200 });
 });
