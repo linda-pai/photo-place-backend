@@ -379,6 +379,20 @@ app.get(`${apiRoot}/images/getUploadInfo/:author`, (req, res) => {
     });
 });
 
+// app.put(`${apiRoot}/images/updateByEventId/:eventId`, (req, res) => {
+//   const eventId = req.params.eventId;
+
+//   db.collection(`imagecollection/${eventId}`).updateMany(
+//     {},
+//     {
+//       $set: {
+//         isReleased: true,
+//       },
+//     }
+//   );
+//   res.json({ message: "更新成功" });
+// });
+
 //查詢圖片 by 號碼布 & event_id
 app.get(
   `${apiRoot}/images/getByPathAndEventId/:eventId/:bib`,
@@ -510,6 +524,37 @@ app.get(`${apiRoot}/events/getBy/:eventId`, (req, res) => {
     .find({ eventId })
     .toArray((error, result) => {
       res.send(result[0]);
+    });
+});
+
+//更新 event by id
+app.put(`${apiRoot}/events/update/:eventId`, (req, res) => {
+  const eventId = req.params.eventId;
+  db.collection("eventlistcollection")
+    .updateOne(
+      { eventId },
+      {
+        $set: {
+          ...req.body,
+        },
+      }
+    )
+    .then(() => res.json({ message: "更新成功" }))
+    .catch((error) => {
+      console.log("update-error", error);
+      return res.json({ message: "更新失敗" });
+    });
+});
+
+//刪除 event by id
+app.delete(`${apiRoot}/events/delete/:eventId`, (req, res) => {
+  const eventId = req.params.eventId;
+  db.collection("eventlistcollection")
+    .deleteOne({ eventId })
+    .then(() => res.json({ message: "刪除成功" }))
+    .catch((error) => {
+      console.log("delete-error", error);
+      return res.json({ message: "刪除失敗" });
     });
 });
 
