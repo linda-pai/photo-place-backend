@@ -612,7 +612,7 @@ app.post(`${apiRoot}/orders/add`, (req, res) => {
       if (user[0]?.email)
         await emailSender({
           email: user[0]?.email,
-          subject: "攝影小隊 - 訂單成立通知",
+          subject: `${process.env.EMAIL_PREFIX} PHOTO PACER 攝影小隊 - 訂單成立通知`,
           html: `
         <div>
           <div style={{ margin:0 auto }}>
@@ -681,7 +681,7 @@ const sendOrderSuccessEmail = async (orderId) => {
         if (user[0]?.email)
           await emailSender({
             email: user[0]?.email,
-            subject: "攝影小隊 - 訂單付款成功通知",
+            subject: `${process.env.EMAIL_PREFIX} PHOTO PACER 攝影小隊 - 訂單付款成功通知`,
             html: `
             <div>
               <div style={{ margin:0 auto }}>
@@ -717,7 +717,7 @@ const sendSoldEmail = async (author, soldCount) => {
     if (user[0]?.email)
       await emailSender({
         email: user[0]?.email,
-        subject: "攝影小隊 - 照片售出通知🎉🎉🎉",
+        subject: `${process.env.EMAIL_PREFIX} PHOTO PACER 攝影小隊 - 照片售出通知🎉🎉🎉`,
         html: `
             <div>
               <div style={{ margin:0 auto }}>
@@ -955,6 +955,8 @@ app.post(`${apiRoot}/newebpay/decrypt`, async (req, res) => {
   if (data.Status === "SUCCESS") {
     const { ItemDesc, TradeNo } = data.Result;
     await updateOrderPaidAt(ItemDesc, TradeNo, paymentConst.NEWEB_PAY);
+    await updateUploadInfoSellInfo(ItemDesc);
+
     await sendOrderSuccessEmail(ItemDesc);
     res.send({ status: "success", ...data });
   } else {
@@ -1076,7 +1078,7 @@ const ImagesUploadEmailNotify = async (email, eventName, notifyUrl) => {
   try {
     await emailSender({
       email,
-      subject: `PHOTO PACER 攝影小隊 - 照片上傳完成通知: ${eventName}`,
+      subject: `${process.env.EMAIL_PREFIX} PHOTO PACER 攝影小隊 - 照片上傳完成通知: ${eventName}`,
       html: `
       <div>
         <div style={{ margin:0 auto }}>
