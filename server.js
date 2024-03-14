@@ -133,16 +133,8 @@ app.post(`${apiRoot}/images/getSignedUploadURL`, async (req, res) => {
 
 //1. detectText  2. drawWatermark  3. uploadToS3 by bucketKey
 app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
-  const {
-    key,
-    eventId,
-    eventName,
-    author,
-    uploadGroupId,
-    price,
-    fileName,
-    lastModified,
-  } = req.body;
+  const { key, eventId, eventName, author, price, fileName, lastModified } =
+    req.body;
 
   const detectedNumbers = await getDetectedByKey(key);
   const watermarkedImage = await getWatermarkedImageUrl(
@@ -164,7 +156,6 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
         eventId,
         eventName,
         author,
-        uploadGroupId,
         lastModified,
       };
 
@@ -180,7 +171,6 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
           path: pathList,
           image: data,
           author,
-          uploadGroupId,
           isReleased: false,
         };
 
@@ -1204,53 +1194,48 @@ app.post("/complete-upload", async (req, res, next) => {
   }
 });
 
-app.get(
-  `${apiRoot}/images/getByUploadGroupId/:uploadGroupId`,
-  async (req, res) => {
-    const uploadGroupId = req.params.uploadGroupId;
-    const eventId = req.params.uploadGroupId.split("_")[0];
+app.get(`${apiRoot}/images/getByAuthor/:eventId/:author`, async (req, res) => {
+  const { eventId, author } = req.params;
+  const countsPerPage = 40;
+  const page = req.query.page - 1 || 0;
 
-    const countsPerPage = 40;
-    const page = req.query.page - 1 || 0;
-
-    await db
-      .collection(`imagecollection/${eventId}`)
-      .aggregate([
-        {
-          $unwind: "$image",
+  await db
+    .collection(`imagecollection/${eventId}`)
+    .aggregate([
+      {
+        $unwind: "$image",
+      },
+      {
+        $match: {
+          author,
         },
-        {
-          $match: {
-            uploadGroupId,
-          },
-        },
-        {
-          $group: {
-            _id: "$_id",
-            image: {
-              $push: {
-                id: "$image.id",
-                eventName: "$image.eventName",
-                eventId: "$image.eventId",
-                watermarkedUrl: "$image.watermarkedUrl",
-                price: "$image.price",
-                lastModified: "$image.lastModified",
-                isReleased: "$isReleased",
-                path: "$path",
-              },
+      },
+      {
+        $group: {
+          _id: "$_id",
+          image: {
+            $push: {
+              id: "$image.id",
+              eventName: "$image.eventName",
+              eventId: "$image.eventId",
+              watermarkedUrl: "$image.watermarkedUrl",
+              price: "$image.price",
+              lastModified: "$image.lastModified",
+              isReleased: "$isReleased",
+              path: "$path",
             },
           },
         },
-      ])
-      .sort({ "image.lastModified": 1 })
-      .skip(page * countsPerPage)
-      .limit(countsPerPage)
-      .toArray((error, result) => {
-        const images = result?.map((item) => item.image).flat();
-        res.send(images);
-      });
-  }
-);
+      },
+    ])
+    .sort({ "image.lastModified": 1 })
+    .skip(page * countsPerPage)
+    .limit(countsPerPage)
+    .toArray((error, result) => {
+      const images = result?.map((item) => item.image).flat();
+      res.send(images);
+    });
+});
 
 app.post(`${apiRoot}/images/release`, async (req, res) => {
   const { eventId, images } = req.body;
