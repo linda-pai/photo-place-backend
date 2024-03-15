@@ -1194,48 +1194,58 @@ app.post("/complete-upload", async (req, res, next) => {
   }
 });
 
-app.get(`${apiRoot}/images/getByAuthor/:eventId/:author`, async (req, res) => {
-  const { eventId, author } = req.params;
-  const countsPerPage = 40;
-  const page = req.query.page - 1 || 0;
-
-  await db
-    .collection(`imagecollection/${eventId}`)
-    .aggregate([
-      {
-        $unwind: "$image",
-      },
-      {
-        $match: {
-          author,
+//check bibs 用的
+app.get(
+  `${apiRoot}/images/getByAuthor/:eventId/:author/:sortBy`,
+  async (req, res) => {
+    const { eventId, author, sortBy } = req.params;
+    const countsPerPage = 40;
+    const page = req.query.page - 1 || 0;
+    await db
+      .collection(`imagecollection/${eventId}`)
+      .aggregate([
+        {
+          $unwind: "$image",
         },
-      },
-      {
-        $group: {
-          _id: "$_id",
-          image: {
-            $push: {
-              id: "$image.id",
-              eventName: "$image.eventName",
-              eventId: "$image.eventId",
-              watermarkedUrl: "$image.watermarkedUrl",
-              price: "$image.price",
-              lastModified: "$image.lastModified",
-              isReleased: "$isReleased",
-              path: "$path",
-            },
+        {
+          $match: {
+            author,
           },
         },
-      },
-    ])
-    .sort({ "image.lastModified": 1 })
-    .skip(page * countsPerPage)
-    .limit(countsPerPage)
-    .toArray((error, result) => {
-      const images = result?.map((item) => item.image).flat();
-      res.send(images);
-    });
-});
+        {
+          $project: { path: 1, pathCount: { $size: "$path" }, image: 1 },
+        },
+        {
+          $group: {
+            _id: "$_id",
+            image: {
+              $push: {
+                id: "$image.id",
+                eventName: "$image.eventName",
+                eventId: "$image.eventId",
+                watermarkedUrl: "$image.watermarkedUrl",
+                price: "$image.price",
+                lastModified: "$image.lastModified",
+                isReleased: "$isReleased",
+                path: "$path",
+              },
+            },
+            pathCount: { $first: "$pathCount" },
+          },
+        },
+        {
+          // sort by pathCount or lastModified
+          $sort: { [sortBy]: 1 },
+        },
+      ])
+      .skip(page * countsPerPage)
+      .limit(countsPerPage)
+      .toArray((error, result) => {
+        const images = result?.map((item) => item.image).flat();
+        res.send(images);
+      });
+  }
+);
 
 app.post(`${apiRoot}/images/release`, async (req, res) => {
   const { eventId, images } = req.body;
