@@ -988,11 +988,6 @@ app.post(`${apiRoot}/newebpay/request`, async (req, res) => {
 app.post(`${apiRoot}/newebpay/decrypt`, async (req, res) => {
   const data = createSesDecrypt(req.body.TradeInfo);
   if (data.Status === "SUCCESS") {
-    const { ItemDesc, TradeNo } = data.Result;
-    await updateOrderPaidAt(ItemDesc, TradeNo, paymentConst.NEWEB_PAY);
-    await updateUploadInfoSellInfo(ItemDesc);
-
-    await sendOrderSuccessEmail(ItemDesc);
     res.send({ status: "success", ...data });
   } else {
     res.send({ status: "fail", ...data });
@@ -1009,6 +1004,25 @@ app.post(`${apiRoot}/newebpay/notify`, async (req, res) => {
     console.log("付款失敗：TradeSha 不一致");
     return res.end();
   }
+
+  //查詢訂單資訊
+  if (data.Status === "SUCCESS") {
+    const { MerchantOrderNo, TradeNo } = data.Result;
+    const order = await db
+      .collection("ordercollection")
+      .find({ MerchantOrderNo: Number(MerchantOrderNo) })
+      .toArray();
+
+    const orderId = order?.[0]?.orderId;
+    if (!orderId) return res.end();
+    await updateOrderPaidAt(orderId, TradeNo, paymentConst.NEWEB_PAY);
+    await updateUploadInfoSellInfo(orderId);
+
+    await sendOrderSuccessEmail(orderId);
+
+    res.send({ status: "success", ...data });
+  }
+
   return res.end();
 });
 
@@ -1244,6 +1258,19 @@ app.get(
         const images = result?.map((item) => item.image).flat();
         res.send(images);
       });
+  }
+);
+
+app.get(
+  `${apiRoot}/images/getByAuthorCount/:eventId/:author`,
+  async (req, res) => {
+    const { eventId, author } = req.params;
+    const count = await db
+      .collection(`imagecollection/${eventId}`)
+      .countDocuments({
+        author,
+      });
+    res.send({ count });
   }
 );
 
