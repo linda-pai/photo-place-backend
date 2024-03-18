@@ -982,7 +982,7 @@ const createOrder = async (data) => {
     .then(async () => {
       const user = await db
         .collection("usercollection")
-        .find({ userId: orderBy })
+        .find({ userId: data.orderBy })
         .project({ token: 1, email: 1, name: 1, userId: 1 })
         .toArray();
       //寄信
