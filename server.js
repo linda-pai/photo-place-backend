@@ -627,55 +627,55 @@ app.post(
   }
 );
 
-//建立訂單
-app.post(`${apiRoot}/orders/add`, (req, res) => {
-  const orderData = {
-    ...req.body,
-    createAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
-    paidAt: null,
-  };
+//建立訂單 - 改成 (createOrder) function 了可以刪掉
+// app.post(`${apiRoot}/orders/add`, (req, res) => {
+//   const orderData = {
+//     ...req.body,
+//     createAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+//     paidAt: null,
+//   };
 
-  db.collection("ordercollection")
-    .insertOne(orderData)
-    .then(async () => {
-      const user = await db
-        .collection("usercollection")
-        .find({ userId: req.body.orderBy })
-        .project({ token: 1, email: 1, name: 1, userId: 1 })
-        .toArray();
-      //寄信
-      if (user[0]?.email)
-        await emailSender({
-          email: user[0]?.email,
-          subject: `${process.env.EMAIL_PREFIX} PHOTO PACER 攝影小隊 - 訂單成立通知`,
-          html: `
-        <div>
-          <div style={{ margin:0 auto }}>
-            <h2> Hi ${user[0].name}，您的訂單已成立，</h2> 
-            <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
-            <p> 至以下網址查看訂單明細：${process.env.CLIENT_DOMAIN}/user/orders</p>
-            <p>訂單編號：${orderData.orderId} </p> 
-            <p>訂單金額：TWD ${orderData.totalAmount}</p>  
-            <p>感謝您的購買，祝您有美好的一天！</p> 
-            <p>如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
-            <p>📷 PHOTO PACER 攝影小隊 </p> 
-            <p>聯絡信箱： photopacer@gmail.com</p>
-            <div>
-              <p>官方Line：@774uebxu</p>
-              <img src=${process.env.AWS_BUCKET_URL}/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
-            </div>
-          </div>
-          <img src=${process.env.AWS_BUCKET_URL}/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
-        </div>
-        `,
-        });
-      res.json({ message: "新增成功" });
-    })
-    .catch((error) => {
-      console.log("add-error", error);
-      return res.json({ message: "新增失敗" });
-    });
-});
+//   db.collection("ordercollection")
+//     .insertOne(orderData)
+//     .then(async () => {
+//       const user = await db
+//         .collection("usercollection")
+//         .find({ userId: req.body.orderBy })
+//         .project({ token: 1, email: 1, name: 1, userId: 1 })
+//         .toArray();
+//       //寄信
+//       if (user[0]?.email)
+//         await emailSender({
+//           email: user[0]?.email,
+//           subject: `${process.env.EMAIL_PREFIX} PHOTO PACER 攝影小隊 - 訂單成立通知`,
+//           html: `
+//         <div>
+//           <div style={{ margin:0 auto }}>
+//             <h2> Hi ${user[0].name}，您的訂單已成立，</h2>
+//             <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
+//             <p> 至以下網址查看訂單明細：${process.env.CLIENT_DOMAIN}/user/orders</p>
+//             <p>訂單編號：${orderData.orderId} </p>
+//             <p>訂單金額：TWD ${orderData.totalAmount}</p>
+//             <p>感謝您的購買，祝您有美好的一天！</p>
+//             <p>如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
+//             <p>📷 PHOTO PACER 攝影小隊 </p>
+//             <p>聯絡信箱： photopacer@gmail.com</p>
+//             <div>
+//               <p>官方Line：@774uebxu</p>
+//               <img src=${process.env.AWS_BUCKET_URL}/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
+//             </div>
+//           </div>
+//           <img src=${process.env.AWS_BUCKET_URL}/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
+//         </div>
+//         `,
+//         });
+//       res.json({ message: "新增成功" });
+//     })
+//     .catch((error) => {
+//       console.log("add-error", error);
+//       return res.json({ message: "新增失敗" });
+//     });
+// });
 
 //查詢訂單 by orderId
 app.get(`${apiRoot}/orders/:orderId`, (req, res) => {
@@ -822,7 +822,7 @@ app.get(`${apiRoot}/orders`, (req, res) => {
 
 //line pay request
 app.post(`${apiRoot}/linepay/request`, async (req, res) => {
-  const { orderId, amount, items, isMobile } = req.body;
+  const { orderId, amount, items, isMobile, orderBy } = req.body;
 
   //確認是否已經付款
   const isPaid = await db
@@ -845,6 +845,14 @@ app.post(`${apiRoot}/linepay/request`, async (req, res) => {
     quantity: 1,
     price: item.price,
   }));
+
+  createOrder({
+    orderId,
+    totalAmount: amount,
+    items,
+    orderBy,
+    paymentMethod: paymentConst.LINE_PAY,
+  });
 
   const linePayRequest = await linePay(
     orderId,
@@ -961,6 +969,56 @@ app.post(`${apiRoot}/linepay/confirm`, async (req, res) => {
   }
 });
 
+//建立訂單
+const createOrder = async (data) => {
+  const orderData = {
+    ...data,
+    createAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+    paidAt: null,
+  };
+
+  db.collection("ordercollection")
+    .insertOne(orderData)
+    .then(async () => {
+      const user = await db
+        .collection("usercollection")
+        .find({ userId: orderBy })
+        .project({ token: 1, email: 1, name: 1, userId: 1 })
+        .toArray();
+      //寄信
+      if (user[0]?.email)
+        await emailSender({
+          email: user[0]?.email,
+          subject: `${process.env.EMAIL_PREFIX} PHOTO PACER 攝影小隊 - 訂單成立通知`,
+          html: `
+      <div>
+        <div style={{ margin:0 auto }}>
+          <h2> Hi ${user[0].name}，您的訂單已成立，</h2> 
+          <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
+          <p> 至以下網址查看訂單明細：${process.env.CLIENT_DOMAIN}/user/orders</p>
+          <p>訂單編號：${orderData.orderId} </p> 
+          <p>訂單金額：TWD ${orderData.totalAmount}</p>  
+          <p>感謝您的購買，祝您有美好的一天！</p> 
+          <p>如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
+          <p>📷 PHOTO PACER 攝影小隊 </p> 
+          <p>聯絡信箱： photopacer@gmail.com</p>
+          <div>
+            <p>官方Line：@774uebxu</p>
+            <img src=${process.env.AWS_BUCKET_URL}/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
+          </div>
+        </div>
+        <img src=${process.env.AWS_BUCKET_URL}/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
+      </div>
+      `,
+        });
+      return orderData;
+    })
+    .catch((error) => {
+      console.log("add-error", error);
+      return;
+    });
+};
+
 app.post(`${apiRoot}/newebpay/request`, async (req, res) => {
   const data = req.body;
   //確認是否已經付款
@@ -977,6 +1035,12 @@ app.post(`${apiRoot}/newebpay/request`, async (req, res) => {
     return res.send({ status: "paid", result: isPaid });
   }
   const encryptOrder = await newebPay(data);
+
+  createOrder({
+    ...data,
+    ...encryptOrder,
+    paymentMethod: paymentConst.NEWEB_PAY,
+  });
 
   res.send({
     status: "success",
