@@ -964,6 +964,27 @@ app.post(`${apiRoot}/linepay/confirm`, async (req, res) => {
 
 //建立訂單
 const createOrder = async (data) => {
+  const { orderId, MerchantOrderNo } = data;
+  //確認訂單是否已經存在
+  const isExist = await db
+    .collection("ordercollection")
+    .find({ orderId })
+    .toArray();
+
+  if (isExist.length > 0) {
+    //update MerchantOrderNo
+    MerchantOrderNo &&
+      db.collection("ordercollection").updateOne(
+        { orderId },
+        {
+          $set: {
+            MerchantOrderNo,
+          },
+        }
+      );
+    return;
+  }
+
   const orderData = {
     ...data,
     createAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
