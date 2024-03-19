@@ -160,10 +160,7 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
       };
 
       try {
-        const paths =
-          detectedNumbers.length > 0
-            ? detectedNumbers
-            : [{ DetectedText: "common" }];
+        const paths = detectedNumbers.length > 0 ? detectedNumbers : [];
 
         const pathList = paths.map(({ DetectedText }) => DetectedText);
 
@@ -384,60 +381,56 @@ app.get(`${apiRoot}/images/getUploadInfo/:author`, (req, res) => {
 // });
 
 //查詢圖片 by 號碼布 & event_id
-app.get(
-  `${apiRoot}/images/getByPathAndEventId/:eventId/:bib`,
-  async (req, res) => {
-    const bid = req.params.bib;
-    const eventId = req.params.eventId;
+app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
+  const path = req.query.path || "";
+  const eventId = req.params.eventId;
 
-    const countsPerPage = 40;
-    const page = req.query.page - 1 || 0;
+  const countsPerPage = 40;
+  const page = req.query.page - 1 || 0;
 
-    await db
-      .collection(`imagecollection/${eventId}`)
-      .aggregate([
-        {
-          $unwind: "$image",
+  await db
+    .collection(`imagecollection/${eventId}`)
+    .aggregate([
+      {
+        $unwind: "$image",
+      },
+      {
+        $match: {
+          path:
+            path === "unIdentify"
+              ? {
+                  $size: 0,
+                }
+              : {
+                  $elemMatch: { $regex: new RegExp(".*" + path + ".*") },
+                },
+          isReleased: true,
         },
-        {
-          $match: {
-            path:
-              bid === "all"
-                ? {
-                    $elemMatch: { $regex: new RegExp(".*") },
-                    $ne: "common",
-                  }
-                : {
-                    $elemMatch: { $regex: new RegExp(".*" + bid + ".*") },
-                  },
-            isReleased: true,
-          },
-        },
-        {
-          $group: {
-            _id: "$_id",
-            image: {
-              $push: {
-                id: "$image.id",
-                eventName: "$image.eventName",
-                eventId: "$image.eventId",
-                watermarkedUrl: "$image.watermarkedUrl",
-                price: "$image.price",
-                lastModified: "$image.lastModified",
-              },
+      },
+      {
+        $group: {
+          _id: "$_id",
+          image: {
+            $push: {
+              id: "$image.id",
+              eventName: "$image.eventName",
+              eventId: "$image.eventId",
+              watermarkedUrl: "$image.watermarkedUrl",
+              price: "$image.price",
+              lastModified: "$image.lastModified",
             },
           },
         },
-      ])
-      .sort({ "image.lastModified": 1 })
-      .skip(page * countsPerPage)
-      .limit(countsPerPage)
-      .toArray((error, result) => {
-        const images = result?.map((item) => item.image).flat();
-        res.send(images);
-      });
-  }
-);
+      },
+    ])
+    .sort({ "image.lastModified": 1 })
+    .skip(page * countsPerPage)
+    .limit(countsPerPage)
+    .toArray((error, result) => {
+      const images = result?.map((item) => item.image).flat();
+      res.send(images);
+    });
+});
 
 //取得所有圖片 count
 app.get(`${apiRoot}/images/getCount/:eventId`, async (req, res) => {
@@ -1306,16 +1299,13 @@ app.get(
                 lastModified: "$image.lastModified",
                 isReleased: "$isReleased",
                 path: "$path",
+                pathCount: "$pathCount",
               },
             },
-            pathCount: { $first: "$pathCount" },
           },
         },
-        {
-          // sort by pathCount or lastModified
-          $sort: { [sortBy]: 1 },
-        },
       ])
+      .sort({ [`image.${sortBy}`]: 1 })
       .skip(page * countsPerPage)
       .limit(countsPerPage)
       .toArray((error, result) => {
@@ -1357,6 +1347,23 @@ app.post(`${apiRoot}/images/updateBibs`, async (req, res) => {
   await db
     .collection(`imagecollection/${eventId}`)
     .updateOne({ "image.id": imageId }, { $set: { path: bibs } });
+
+  res.send({ status: 200 });
+});
+
+//TODO: 更新所有圖片的 common path to [] 更新後可刪除
+app.get(`${apiRoot}/images/updateCommonBibs/:eventId`, async (req, res) => {
+  const { eventId } = req.params;
+  const images = await db
+    .collection(`imagecollection/${eventId}`)
+    .find({ path: "common" })
+    .toArray();
+
+  images.forEach(async (item) => {
+    await db
+      .collection(`imagecollection/${eventId}`)
+      .updateOne({ "image.id": item.image.id }, { $set: { path: [] } });
+  });
 
   res.send({ status: 200 });
 });
