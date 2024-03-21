@@ -82,9 +82,6 @@ mongoUtil.connectToServer(function (err, client) {
   });
 });
 
-// mongoDB path
-//{host}/images/{event_id}/{detected_Number}|common/image.jpg
-
 //TODO:有 bug 有時候會連不到 db
 app.post(`${apiRoot}/user/createUser`, async (req, res) => {
   const userId = req.body.userId || "user-" + UUID.v4().substring(0, 12);
@@ -185,123 +182,6 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
     }
   );
 });
-
-//上傳圖片 deprecated
-// app.post(
-//   `${apiRoot}/images/uploadAndDetectText`,
-//   multerUploader.single("file"),
-//   async (req, res) => {
-//     //取得 lastModified from req.file
-//     if (!req.file) return res.json({ error: "沒有檔案" });
-//     TODO: try {
-//       return Promise.all([
-//         uploadToS3andDetectText(req.file, "/" + req.body.eventId + "/"), //1. 上傳圖片到S3   -> 辨識號碼               (拿到 originImageUrl & 辨識號碼)
-//         getWatermarkedImageUrl(req.file, "/" + req.body.eventId + "/"), //2. 產生浮水印圖片 -> 上傳浮水印圖片到S3        (拿到 watermarkedImageUrl)
-//       ])
-//         .then(async (response) => {
-//           const { originImageUrl, detectedNumbers, fileName } = response[0];
-//           const { watermarkedUrl } = response[1];
-//           const { eventId, author, uploadId } = req.body;
-
-//           const data = {
-//             id: "img-" + UUID.v4(),
-//             url: originImageUrl,
-//             watermarkedUrl,
-//             fileName,
-//             price: 109,
-//             ...req.body,
-//           };
-//           //依照 eventId 傳到不同的 collection
-//           //path: detectedNumbers or common
-//           try {
-//             const paths =
-//               detectedNumbers.length > 0
-//                 ? detectedNumbers
-//                 : [{ DetectedText: "common" }];
-
-//             const pathList = paths.map(({ DetectedText }) => DetectedText);
-
-//             const imageObj = {
-//               path: pathList,
-//               image: data,
-//               author,
-//               uploadId,
-//             };
-
-//             await db
-//               .collection(`imagecollection/${eventId}`)
-//               .insertOne(imageObj);
-//           } catch (error) {
-//             console.log("DetectedText-err", error);
-//             res.json({ error: "新增失敗" });
-//           }
-
-//           res.status(200).json({
-//             message: "上傳成功",
-//             data,
-//             progress: 100,
-//           });
-//         })
-//         .catch((err) => {
-//           console.log("err", err);
-//           res.json({ error: "新增失敗" });
-//         });
-//     } catch (error) {
-//       console.log(error);
-//       res.json({ error: "新增失敗" });
-//     }
-//   }
-// );
-
-//update 圖片 watermarkedUrl by imageId
-// app.put(`${apiRoot}/images/updateWatermarkedUrl/:eventId`, (req, res) => {
-//   const eventId = req.params.eventId;
-
-//   const updateWatermarkedUrl = async (eventId) => {
-//     const images = await db
-//       .collection(`imagecollection/${eventId}`)
-//       .find({})
-//       .limit(20)
-//       .skip(1600)
-//       .toArray();
-
-//     const flattenData = images.map((item) => item.image).flat();
-//     console.log("flattenData.length", flattenData.length);
-
-//     for (let x = 0, ln = flattenData.length; x < ln; x++) {
-//       setTimeout(
-//         function (y) {
-//           uploadSinglePhoto(y);
-//         },
-//         x * 1500,
-//         x
-//       );
-//     }
-
-//     const uploadSinglePhoto = async (x) => {
-//       const watermarkedImage = await getWatermarkedImageUrlFromRemote(
-//         flattenData[x].url,
-//         "/" + eventId + "/"
-//       );
-
-//       db.collection(`imagecollection/${eventId}`).updateOne(
-//         { "image.id": flattenData[x].id },
-//         {
-//           $set: {
-//             "image.$.watermarkedUrl": watermarkedImage.watermarkedUrl,
-//           },
-//         }
-//       );
-
-//       console.log(
-//         "success!!!watermarkedImage \n",
-//         watermarkedImage.watermarkedUrl
-//       );
-//     };
-//   };
-
-//   updateWatermarkedUrl(eventId);
-// });
 
 //紀錄上傳資訊
 app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
@@ -642,56 +522,6 @@ app.post(
     uploadToS3(file, path).then((result) => res.json(result));
   }
 );
-
-//建立訂單 - 改成 (createOrder) function 了可以刪掉
-// app.post(`${apiRoot}/orders/add`, (req, res) => {
-//   const orderData = {
-//     ...req.body,
-//     createAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
-//     paidAt: null,
-//   };
-
-//   db.collection("ordercollection")
-//     .insertOne(orderData)
-//     .then(async () => {
-//       const user = await db
-//         .collection("usercollection")
-//         .find({ userId: req.body.orderBy })
-//         .project({ token: 1, email: 1, name: 1, userId: 1 })
-//         .toArray();
-//       //寄信
-//       if (user[0]?.email)
-//         await emailSender({
-//           email: user[0]?.email,
-//           subject: `${process.env.EMAIL_PREFIX} PHOTO PACER 攝影小隊 - 訂單成立通知`,
-//           html: `
-//         <div>
-//           <div style={{ margin:0 auto }}>
-//             <h2> Hi ${user[0].name}，您的訂單已成立，</h2>
-//             <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
-//             <p> 至以下網址查看訂單明細：${process.env.CLIENT_DOMAIN}/user/orders</p>
-//             <p>訂單編號：${orderData.orderId} </p>
-//             <p>訂單金額：TWD ${orderData.totalAmount}</p>
-//             <p>感謝您的購買，祝您有美好的一天！</p>
-//             <p>如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
-//             <p>📷 PHOTO PACER 攝影小隊 </p>
-//             <p>聯絡信箱： photopacer@gmail.com</p>
-//             <div>
-//               <p>官方Line：@774uebxu</p>
-//               <img src=${process.env.AWS_BUCKET_URL}/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
-//             </div>
-//           </div>
-//           <img src=${process.env.AWS_BUCKET_URL}/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
-//         </div>
-//         `,
-//         });
-//       res.json({ message: "新增成功" });
-//     })
-//     .catch((error) => {
-//       console.log("add-error", error);
-//       return res.json({ message: "新增失敗" });
-//     });
-// });
 
 //查詢訂單 by orderId
 app.get(`${apiRoot}/orders/:orderId`, (req, res) => {
@@ -1382,23 +1212,6 @@ app.post(`${apiRoot}/images/updateBibs`, async (req, res) => {
   await db
     .collection(`imagecollection/${eventId}`)
     .updateOne({ "image.id": imageId }, { $set: { path: bibs } });
-
-  res.send({ status: 200 });
-});
-
-//TODO: 更新所有圖片的 common path to [] 更新後可刪除
-app.get(`${apiRoot}/images/updateCommonBibs/:eventId`, async (req, res) => {
-  const { eventId } = req.params;
-  const images = await db
-    .collection(`imagecollection/${eventId}`)
-    .find({ path: "common" })
-    .toArray();
-
-  images.forEach(async (item) => {
-    await db
-      .collection(`imagecollection/${eventId}`)
-      .updateOne({ "image.id": item.image.id }, { $set: { path: [] } });
-  });
 
   res.send({ status: 200 });
 });
