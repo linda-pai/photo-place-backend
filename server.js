@@ -312,7 +312,7 @@ app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
     chargeAt: null,
   };
 
-  const { eventId, author, images } = req.body;
+  const { eventId, author } = req.body;
   if (!author) return res.json({ message: "新增失敗" });
 
   //if author and eventId is not exist in uploadInfocollection
@@ -327,7 +327,6 @@ app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
           { author, eventId },
           {
             $set: {
-              images: [...result[0].images, ...images],
               lastEditTime: TimeStamp,
             },
           }
@@ -366,19 +365,43 @@ app.get(`${apiRoot}/images/getUploadInfo/:author`, (req, res) => {
     });
 });
 
-// app.put(`${apiRoot}/images/updateByEventId/:eventId`, (req, res) => {
-//   const eventId = req.params.eventId;
+app.get(
+  `${apiRoot}/images/getUploadImgDetail/:eventId/:author`,
+  async (req, res) => {
+    const eventId = req.params.eventId;
+    const author = req.params.author;
 
-//   db.collection(`imagecollection/${eventId}`).updateMany(
-//     {},
-//     {
-//       $set: {
-//         isReleased: true,
-//       },
-//     }
-//   );
-//   res.json({ message: "更新成功" });
-// });
+    const isReleasedLength = await db
+      .collection(`imagecollection/${eventId}`)
+      .countDocuments({
+        author,
+        isReleased: true,
+      });
+
+    const unReleasedLength = await db
+      .collection(`imagecollection/${eventId}`)
+      .countDocuments({
+        author,
+        isReleased: false,
+      });
+
+    res.send({ isReleasedLength, unReleasedLength });
+  }
+);
+
+app.put(`${apiRoot}/images/releaseByEventId/:eventId`, (req, res) => {
+  const eventId = req.params.eventId;
+
+  db.collection(`imagecollection/${eventId}`).updateMany(
+    { isReleased: false },
+    {
+      $set: {
+        isReleased: true,
+      },
+    }
+  );
+  res.json({ message: "更新成功", status: 200 });
+});
 
 //查詢圖片 by 號碼布 & event_id
 app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
@@ -1305,7 +1328,12 @@ app.get(
           },
         },
         {
-          $project: { path: 1, pathCount: { $size: "$path" }, image: 1 },
+          $project: {
+            path: 1,
+            pathCount: { $size: "$path" },
+            image: 1,
+            isReleased: 1,
+          },
         },
         {
           $group: {
@@ -1348,20 +1376,6 @@ app.get(
     res.send({ count });
   }
 );
-
-app.post(`${apiRoot}/images/release`, async (req, res) => {
-  const { eventId, images } = req.body;
-  const fileName = images.map((item) => item.path);
-
-  await db
-    .collection(`imagecollection/${eventId}`)
-    .updateMany(
-      { "image.fileName": { $in: fileName } },
-      { $set: { isReleased: true } }
-    );
-
-  res.send({ status: 200 });
-});
 
 app.post(`${apiRoot}/images/updateBibs`, async (req, res) => {
   const { eventId, imageId, bibs } = req.body;
