@@ -288,7 +288,7 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
   const path = req.query.path || "";
   const eventId = req.params.eventId;
 
-  const countsPerPage = 40;
+  const countsPerPage = 15;
   const page = req.query.page - 1 || 0;
 
   await db
@@ -306,6 +306,7 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
                 }
               : {
                   $elemMatch: { $regex: new RegExp(".*" + path + ".*") },
+                  $ne: [],
                 },
           isReleased: true,
         },
@@ -325,13 +326,30 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
           },
         },
       },
+      {
+        $sort: { "image.lastModified": 1 },
+      },
+      {
+        $facet: {
+          paginatedResults: [
+            { $skip: page * countsPerPage },
+            { $limit: countsPerPage },
+          ],
+          totalCount: [
+            {
+              $count: "count",
+            },
+          ],
+        },
+      },
     ])
-    .sort({ "image.lastModified": 1 })
-    .skip(page * countsPerPage)
-    .limit(countsPerPage)
     .toArray((error, result) => {
-      const images = result?.map((item) => item.image).flat();
-      res.send(images);
+      const images = result[0]?.paginatedResults
+        ? result[0]?.paginatedResults.map((item) => item.image).flat()
+        : [];
+
+      const totalCount = result[0]?.totalCount[0]?.count || 0;
+      res.send({ images, totalCount });
     });
 });
 
@@ -1139,12 +1157,12 @@ app.post("/complete-upload", async (req, res, next) => {
   }
 });
 
-//check bibs 用的
+//photographer/* 用的，要有 :author 才能查詢
 app.get(
   `${apiRoot}/images/getByAuthor/:eventId/:author/:sortBy`,
   async (req, res) => {
     const { eventId, author, sortBy } = req.params;
-    const countsPerPage = 40;
+    const countsPerPage = 15;
     const page = req.query.page - 1 || 0;
     await db
       .collection(`imagecollection/${eventId}`)
@@ -1155,6 +1173,7 @@ app.get(
         {
           $match: {
             author,
+            isReleased: req.query.isReleased === "false" ? false : true,
           },
         },
         {
@@ -1176,6 +1195,7 @@ app.get(
                 watermarkedUrl: "$image.watermarkedUrl",
                 price: "$image.price",
                 lastModified: "$image.lastModified",
+                fileName: "$image.fileName",
                 isReleased: "$isReleased",
                 path: "$path",
                 pathCount: "$pathCount",
@@ -1183,27 +1203,30 @@ app.get(
             },
           },
         },
+        {
+          $sort: { [`image.${sortBy}`]: 1 },
+        },
+        {
+          $facet: {
+            paginatedResults: [
+              { $skip: page * countsPerPage },
+              { $limit: countsPerPage },
+            ],
+            totalCount: [
+              {
+                $count: "count",
+              },
+            ],
+          },
+        },
       ])
-      .sort({ [`image.${sortBy}`]: 1 })
-      .skip(page * countsPerPage)
-      .limit(countsPerPage)
       .toArray((error, result) => {
-        const images = result?.map((item) => item.image).flat();
-        res.send(images);
+        const images = result[0]?.paginatedResults
+          .map((item) => item.image)
+          .flat();
+        const totalCount = result[0]?.totalCount[0]?.count || 0;
+        res.send({ images, totalCount });
       });
-  }
-);
-
-app.get(
-  `${apiRoot}/images/getByAuthorCount/:eventId/:author`,
-  async (req, res) => {
-    const { eventId, author } = req.params;
-    const count = await db
-      .collection(`imagecollection/${eventId}`)
-      .countDocuments({
-        author,
-      });
-    res.send({ count });
   }
 );
 
