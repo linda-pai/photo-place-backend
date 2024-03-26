@@ -21,6 +21,7 @@ dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 const {
   uploadToS3,
+  deleteS3Object,
   multerUploader,
   getSignedUploadURL,
   getSignedMultipartUploadURL,
@@ -585,7 +586,7 @@ const sendOrderSuccessEmail = async (orderId) => {
             <div>
               <div style={{ margin:0 auto }}>
                 <h2> Hi ${user[0].name}，您的訂單已付款成功，</h2> 
-                <p>即可到訂單查詢頁下載照片：${process.env.CLIENT_DOMAIN}/user/orders</p>
+                <p>即可到訂單查詢頁下載照片：${process.env.CLIENT_WWW_DOMAIN}/user/orders</p>
                 <p>感謝您的購買，期待下次我們賽道再相見！</p> 
                 <p>⬇️⬇️ 如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
                 <p>📷 PHOTO PACER 攝影小隊 </p> 
@@ -621,7 +622,7 @@ const sendSoldEmail = async (author, soldCount) => {
             <div>
               <div style={{ margin:0 auto }}>
                 <h2> Hi ${user[0].name}，您的照片已售出 ${soldCount}張照片，</h2> 
-                <p>查看更多細節 - 上傳紀錄頁：${process.env.CLIENT_DOMAIN}/photographer/uploadDetail</p>
+                <p>查看更多細節 - 上傳紀錄頁：${process.env.CLIENT_WWW_DOMAIN}/photographer/records</p>
                 <p>很高興有機會幫助您賣出照片，期待您下次更多優秀作品！</p>
                 <p>⬇️⬇️ 如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
                 <p>📷 PHOTO PACER 攝影小隊 </p> 
@@ -880,7 +881,7 @@ const createOrder = async (data) => {
         <div style={{ margin:0 auto }}>
           <h2> Hi ${user[0].name}，您的訂單已成立，</h2> 
           <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
-          <p> 至以下網址查看訂單明細：${process.env.CLIENT_DOMAIN}/user/orders</p>
+          <p> 至以下網址查看訂單明細：${process.env.CLIENT_WWW_DOMAIN}/user/orders</p>
           <p>訂單編號：${orderData.orderId} </p> 
           <p>訂單金額：TWD ${orderData.totalAmount}</p>  
           <p>感謝您的購買，祝您有美好的一天！</p> 
@@ -1238,3 +1239,25 @@ app.post(`${apiRoot}/images/updateBibs`, async (req, res) => {
 
   res.send({ status: 200 });
 });
+
+//delete image by id
+app.post(
+  `${apiRoot}/images/delete/:eventId/:imageId/:author`,
+  async (req, res) => {
+    const { eventId, imageId, author } = req.params;
+    await db.collection(`imagecollection/${eventId}`).findOneAndDelete(
+      {
+        "image.id": imageId,
+        author,
+      },
+      (error, result) => {
+        const key = result.value.image.url
+          .split(`${process.env.AWS_BUCKET_URL}`)
+          .pop();
+        //TODO: not working
+        deleteS3Object(key);
+        res.send({ status: "success" });
+      }
+    );
+  }
+);
