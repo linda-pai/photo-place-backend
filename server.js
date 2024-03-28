@@ -131,8 +131,16 @@ app.post(`${apiRoot}/images/getSignedUploadURL`, async (req, res) => {
 
 //1. detectText  2. drawWatermark  3. uploadToS3 by bucketKey
 app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
-  const { key, eventId, eventName, author, price, fileName, lastModified } =
-    req.body;
+  const {
+    key,
+    eventId,
+    eventName,
+    author,
+    authorName,
+    price,
+    fileName,
+    lastModified,
+  } = req.body;
 
   const detectedNumbers = await getDetectedByKey(key);
   const watermarkedImage = await getWatermarkedImageUrl(
@@ -154,6 +162,7 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
         eventId,
         eventName,
         author,
+        authorName,
         lastModified,
       };
 
@@ -287,6 +296,7 @@ app.put(`${apiRoot}/images/releaseByEventId/:eventId`, (req, res) => {
 //查詢圖片 by 號碼布 & event_id
 app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
   const path = req.query.path || "";
+  const author = req.query.author || "";
   const eventId = req.params.eventId;
 
   const countsPerPage = 15;
@@ -310,6 +320,7 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
                   $ne: [],
                 },
           isReleased: true,
+          "image.author": author ? author : { $ne: "" },
         },
       },
       {
@@ -428,7 +439,7 @@ app.get(`${apiRoot}/events/getBy/:eventId`, (req, res) => {
   db.collection("eventlistcollection")
     .find({ eventId })
     .toArray((error, result) => {
-      res.send(result[0]);
+      res.send(result[0] || {});
     });
 });
 
@@ -1108,8 +1119,17 @@ const ImagesUploadEmailNotify = async (email, eventName, notifyUrl) => {
 
 app.get("/start-upload", async (req, res, next) => {
   try {
-    const path = req.query.path;
-    const fileName = req.query.fileName;
+    const { path, fileName } = req.query;
+
+    //TODO: //先問是否有相同檔案
+    // const isExist = await db
+    //   .collection(`imagecollection/${eventId}`)
+    //   .find({ "image.fileName": fileName })
+    //   .toArray();
+
+    // if (isExist.length > 0) {
+    //   return res.send({ status: 200, msg: "已經有相同檔案囉～" });
+    // }
 
     let uploadData = await createMultipartUpload(path, fileName);
     res.send(uploadData);
@@ -1261,3 +1281,15 @@ app.post(
     );
   }
 );
+
+//get getPhotographers by eventId
+app.get(`${apiRoot}/images/getPhotographers/:eventId`, async (req, res) => {
+  const eventId = req.params.eventId;
+  const photographers = await db
+    .collection(`uploadInfocollection`)
+    .find({ eventId })
+    .project({ author: 1, name: 1, email: 1, userId: 1 })
+    .toArray();
+
+  res.send(photographers);
+});
