@@ -25,16 +25,18 @@ const getDetectedNumbers = async (detectKey) => {
         try {
           let detectedNumbers = [];
           response.TextDetections.map((label) =>
-            label.Confidence > 90 &&
-            label.Type === "LINE" &&
-            Number(label.DetectedText)
+            label.Confidence > 75 && Number(label.DetectedText)
               ? detectedNumbers.push({
                   DetectedText: label.DetectedText,
                   Confidence: label.Confidence,
                 })
               : null
           );
-          resolve(detectedNumbers || []);
+          const removeDuplicate = detectedNumbers.filter(
+            (v, i, a) =>
+              a.findIndex((t) => t.DetectedText === v.DetectedText) === i
+          );
+          resolve(removeDuplicate || []);
         } catch (error) {
           console.log(error);
           resolve([]);
