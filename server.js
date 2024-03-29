@@ -30,10 +30,7 @@ const {
 } = require("./src/modules/uploadModules");
 const { getWatermarkedImageUrl } = require("./src/modules/drawWatermark");
 
-const {
-  uploadToS3andDetectText,
-  getDetectedByKey,
-} = require("./src/modules/detectText");
+const { getDetectedByKey } = require("./src/modules/detectText");
 
 var utc = require("dayjs/plugin/utc");
 dayjs.extend(utc);
@@ -275,7 +272,14 @@ app.get(
         isReleased: false,
       });
 
-    res.send({ isReleasedLength, unReleasedLength });
+    const featuredLength = await db
+      .collection(`imagecollection/${eventId}`)
+      .countDocuments({
+        author,
+        "image.isFeatured": true,
+      });
+
+    res.send({ isReleasedLength, unReleasedLength, featuredLength });
   }
 );
 
@@ -1220,6 +1224,7 @@ app.get(
                 isReleased: "$isReleased",
                 path: "$path",
                 pathCount: "$pathCount",
+                isFeatured: "$image.isFeatured",
               },
             },
           },
@@ -1293,3 +1298,121 @@ app.get(`${apiRoot}/images/getPhotographers/:eventId`, async (req, res) => {
 
   res.send(photographers);
 });
+
+//設定 image 為精選
+app.post(
+  `${apiRoot}/images/setFeatured/:eventId/:imageId/:author`,
+  async (req, res) => {
+    const { eventId, imageId, author } = req.params;
+    const { isFeatured } = req.body;
+    await db
+      .collection(`imagecollection/${eventId}`)
+      .updateOne(
+        { "image.id": imageId, author },
+        { $set: { "image.isFeatured": isFeatured } }
+      );
+
+    res.send({ status: "success" });
+  }
+);
+
+app.get(`${apiRoot}/images/getFeatured/:eventId/:author`, async (req, res) => {
+  const { eventId, author } = req.params;
+  const page = req.query.page - 1 || 0;
+  const countsPerPage = 15;
+
+  await db
+    .collection(`imagecollection/${eventId}`)
+    .aggregate([
+      {
+        $unwind: "$image",
+      },
+      {
+        $match: {
+          author,
+          "image.isFeatured": true,
+        },
+      },
+      {
+        $project: {
+          image: 1,
+        },
+      },
+      {
+        $group: {
+          _id: "$_id",
+          image: {
+            $push: {
+              id: "$image.id",
+              eventName: "$image.eventName",
+              eventId: "$image.eventId",
+              watermarkedUrl: "$image.watermarkedUrl",
+              price: "$image.price",
+              lastModified: "$image.lastModified",
+              fileName: "$image.fileName",
+              isReleased: "$isReleased",
+              path: "$path",
+              pathCount: "$pathCount",
+              isFeatured: "$image.isFeatured",
+            },
+          },
+        },
+      },
+      {
+        $facet: {
+          paginatedResults: [
+            { $skip: page * countsPerPage },
+            { $limit: countsPerPage },
+          ],
+          totalCount: [
+            {
+              $count: "count",
+            },
+          ],
+        },
+      },
+    ])
+    .toArray((error, result) => {
+      const images = result[0]?.paginatedResults
+        .map((item) => item.image)
+        .flat();
+      const totalCount = result[0]?.totalCount[0]?.count || 0;
+      res.send({ images, totalCount });
+    });
+});
+
+//migrate eventId to another eventId
+//未來如果有新增到重複的賽事，可以用這個 api
+// app.post(`${apiRoot}/images/changeEventId`, async (req, res) => {
+//   const { eventId, newEventId } = req.body;
+//   //get event name
+//   const event = await db
+//     .collection("eventlistcollection")
+//     .find({ eventId: newEventId })
+//     .toArray();
+
+//   if (event.length === 0) {
+//     return res.send({ status: 404, msg: "找不到新的 eventId" });
+//   }
+//   //update eventId
+//   await db.collection(`imagecollection/${eventId}`).updateMany(
+//     {},
+//     {
+//       $set: {
+//         "image.eventId": newEventId,
+//         "image.eventName": event[0].eventName,
+//       },
+//     }
+//   );
+//   const images = await db
+//     .collection(`imagecollection/${eventId}`)
+//     .find({})
+//     .toArray();
+
+//   //push to new eventId
+//   await db.collection(`imagecollection/${newEventId}`).insertMany(images);
+//   //delete collection with old eventId
+//   await db.collection(`imagecollection/${eventId}`).drop();
+
+//   res.send({ status: 200 });
+// });
