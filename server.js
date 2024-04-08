@@ -481,7 +481,14 @@ app.delete(`${apiRoot}/events/delete/:eventId`, (req, res) => {
 //取得活動下拉選單
 app.get(`${apiRoot}/events/getEventOptions`, (req, res) => {
   db.collection("eventlistcollection")
-    .find({})
+    //find by date in past 14 days and future 3 days
+    .find({
+      date: {
+        $gte: dayjs().subtract(14, "day").format("YYYY-MM-DD"),
+        $lte: dayjs().add(1, "day").format("YYYY-MM-DD"),
+      },
+    })
+    // .find({})
     .project({ eventName: 1, eventId: 1, date: 1 })
     .toArray((error, result) => {
       res.send(result);
@@ -533,8 +540,8 @@ app.post(
     const eventData = {
       eventId: "evt-" + UUID.v4().substring(0, 12),
       ...req.body,
-      isShow: false, //TODO: 預設不顯示
-      isCompleteUpload: false, //TODO: 預設不顯示
+      isShow: false,
+      isCompleteUpload: false,
     };
 
     db.collection("eventlistcollection")
