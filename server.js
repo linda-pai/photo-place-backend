@@ -1121,9 +1121,9 @@ const ImagesUploadEmailNotify = async (email, eventName, notifyUrl) => {
 
 //multipart upload
 
-app.get("/start-upload", async (req, res, next) => {
+app.post("/start-upload", async (req, res, next) => {
   try {
-    const { path, fileName } = req.query;
+    const { path, fileName } = req.body;
 
     //TODO: //先問是否有相同檔案
     // const isExist = await db
@@ -1139,6 +1139,7 @@ app.get("/start-upload", async (req, res, next) => {
     res.send(uploadData);
   } catch (err) {
     console.log("start-upload", err);
+    res.send({ error: err });
   }
 });
 
