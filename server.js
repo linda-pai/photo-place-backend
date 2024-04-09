@@ -28,7 +28,10 @@ const {
   createMultipartUpload,
   completeMultipartUpload,
 } = require("./src/modules/uploadModules");
-const { getWatermarkedImageUrl } = require("./src/modules/drawWatermark");
+const {
+  getWatermarkedImageUrl,
+  getWatermarkedFeaturedImageUrl,
+} = require("./src/modules/drawWatermark");
 
 const { getDetectedByKey } = require("./src/modules/detectText");
 
@@ -125,6 +128,98 @@ app.post(`${apiRoot}/images/getSignedUploadURL`, async (req, res) => {
   );
   res.send({ signedUrl, key });
 });
+
+app.post(`${apiRoot}/images/addFeaturedImageWatermark`, async (req, res) => {
+  const { images, watermarkImg, position } = req.body;
+
+  const promises = images.map(async (image) => {
+    const { watermarkedUrl } = await getWatermarkedFeaturedImageUrl({
+      bucketKey: image.url.split(process.env.AWS_BUCKET_URL + "/")[1],
+      watermarkedImageUrl: watermarkImg.split(
+        process.env.AWS_BUCKET_URL + "/"
+      )[1],
+      position: position,
+      path: "/" + image.eventId + "/featured-watermark/",
+      fileName: image.fileName,
+    });
+
+    await db.collection(`imagecollection/${image.eventId}`).updateOne(
+      { "image.id": image.id },
+      {
+        $set: {
+          "image.featuredWatermarkedUrl": watermarkedUrl,
+        },
+      }
+    );
+
+    return {
+      id: image.id,
+      watermarkedUrl,
+    };
+  });
+
+  Promise.all(promises).then((result) => {
+    res.send({ message: "更新成功", result });
+  });
+});
+
+app.get(
+  `${apiRoot}/images/getFeaturedWatermarkImages/:eventId/:author`,
+  async (req, res) => {
+    const { author, eventId } = req.params;
+    db.collection(`imagecollection/${eventId}`)
+      .aggregate([
+        {
+          $unwind: "$image",
+        },
+        {
+          $match: {
+            "image.author": author,
+            isFeatured: true,
+            "image.featuredWatermarkedUrl": { $exists: true },
+          },
+        },
+      ])
+      .project({
+        "image.featuredWatermarkedUrl": 1,
+        "image.id": 1,
+        "image.fileName": 1,
+      })
+      .toArray((error, result) => {
+        const images = result
+          .map((item) => {
+            return {
+              ...item.image,
+              url: item.image.featuredWatermarkedUrl,
+            };
+          })
+          .flat();
+        res.send(images);
+      });
+  }
+);
+
+app.post(`${apiRoot}/images/photographer/watermark`, async (req, res) => {
+  //watermarkImg 寫入 author
+  const { watermarkImg, author } = req.body;
+  await db.collection(`photographercollection`).insertOne({
+    author,
+    watermarkImg: watermarkImg,
+  });
+  res.json({ message: "更新成功" });
+});
+
+app.get(
+  `${apiRoot}/images/photographer/getWatermark/:author`,
+  async (req, res) => {
+    const author = req.params.author;
+    const watermark = await db
+      .collection(`photographercollection`)
+      .find({ author })
+      .toArray();
+    res.send(watermark);
+  }
+);
 
 //1. detectText  2. drawWatermark  3. uploadToS3 by bucketKey
 app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
@@ -324,6 +419,8 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
                 },
           isReleased: true,
           "image.author": author ? author : { $ne: "" },
+          //預設只顯示精選圖片，如果有 path(搜尋關鍵字) 就不管是不是精選
+          ...(path ? {} : { isFeatured: true }),
         },
       },
       {
