@@ -409,14 +409,15 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
       {
         $match: {
           path:
-            path === "unIdentify"
-              ? {
-                  $size: 0,
-                }
-              : {
-                  $elemMatch: { $regex: new RegExp(".*" + path + ".*") },
-                  $ne: [],
-                },
+            // path === "unIdentify"
+            //   ? {
+            //       $size: 0,
+            //     }
+            //   :
+            {
+              $elemMatch: { $regex: new RegExp(".*" + path + ".*") },
+              $ne: [],
+            },
           isReleased: true,
           "image.author": author ? author : { $ne: "" },
           //預設只顯示精選圖片，如果有 path(搜尋關鍵字) 就不管是不是精選
