@@ -480,7 +480,7 @@ app.delete(`${apiRoot}/events/delete/:eventId`, (req, res) => {
 //取得活動下拉選單
 app.get(`${apiRoot}/events/getEventOptions`, (req, res) => {
   db.collection("eventlistcollection")
-    //find by date in past 14 days and future 3 days
+    //find by date in past 10 days and future 3 days
     .find({
       date: {
         $gte: dayjs().subtract(14, "day").format("YYYY-MM-DD"),
@@ -798,32 +798,40 @@ const updateUploadInfoSellInfo = async (orderId) => {
     const imagesByAuthorList = Object.keys(imagesByAuthor);
 
     imagesByAuthorList.forEach(async (author) => {
-      const uploadIdList = Object.keys(imagesByAuthor[author]);
-
-      uploadIdList.forEach(async (uploadId) => {
-        const images = imagesByAuthor[author][uploadId];
-        await db.collection(`uploadInfocollection`).updateOne(
-          { uploadId },
-          {
-            $set: {
-              sellInfo: images.map((item) => {
-                const { id, watermarkedUrl, price, eventId } = item.image;
-                return {
-                  orderId,
-                  paymentMethod: order[0].paymentMethod,
-                  price,
-                  eventId,
-                  id,
-                  watermarkedUrl,
-                };
-              }),
-            },
-          }
-        );
-      });
-
       await sendSoldEmail(author, images.length);
+
+      //更新 uploadInfo
+      await db.collection(`uploadInfocollection`).updateOne(
+        {
+          eventId,
+          author,
+        },
+        {
+          $inc: {
+            soldCount: images.length,
+          },
+          //update sold images
+          $push: {
+            soldImages: {
+              orderId,
+              images: images.map((item) => item.image),
+            },
+          },
+        }
+      );
     });
+
+    //更新 image isSold = true
+    await db.collection(`imagecollection/${eventId}`).updateMany(
+      {
+        "image.id": { $in: imagesList },
+      },
+      {
+        $set: {
+          isSold: true,
+        },
+      }
+    );
   });
 };
 
