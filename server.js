@@ -171,7 +171,6 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
         const imageObj = {
           path: pathList,
           image: data,
-          author,
           isReleased: false,
         };
 
@@ -261,22 +260,22 @@ app.get(
     const isReleasedLength = await db
       .collection(`imagecollection/${eventId}`)
       .countDocuments({
-        author,
+        "image.author": author,
         isReleased: true,
       });
 
     const unReleasedLength = await db
       .collection(`imagecollection/${eventId}`)
       .countDocuments({
-        author,
+        "image.author": author,
         isReleased: false,
       });
 
     const featuredLength = await db
       .collection(`imagecollection/${eventId}`)
       .countDocuments({
-        author,
-        "image.isFeatured": true,
+        "image.author": author,
+        isFeatured: true,
       });
 
     res.send({ isReleasedLength, unReleasedLength, featuredLength });
@@ -1205,7 +1204,7 @@ app.get(
         },
         {
           $match: {
-            author,
+            "image.author": author,
             isReleased: req.query.isReleased === "false" ? false : true,
           },
         },
@@ -1232,7 +1231,7 @@ app.get(
                 isReleased: "$isReleased",
                 path: "$path",
                 pathCount: "$pathCount",
-                isFeatured: "$image.isFeatured",
+                isFeatured: "$isFeatured",
               },
             },
           },
@@ -1281,7 +1280,7 @@ app.post(
     await db.collection(`imagecollection/${eventId}`).findOneAndDelete(
       {
         "image.id": imageId,
-        author,
+        "image.author": author,
       },
       (error, result) => {
         const key = result.value.image.url
@@ -1316,8 +1315,8 @@ app.post(
     await db
       .collection(`imagecollection/${eventId}`)
       .updateOne(
-        { "image.id": imageId, author },
-        { $set: { "image.isFeatured": isFeatured } }
+        { "image.id": imageId, "image.author": author },
+        { $set: { isFeatured: isFeatured } }
       );
 
     res.send({ status: "success" });
@@ -1337,13 +1336,14 @@ app.get(`${apiRoot}/images/getFeatured/:eventId/:author`, async (req, res) => {
       },
       {
         $match: {
-          author,
-          "image.isFeatured": true,
+          "image.author": author,
+          isFeatured: true,
         },
       },
       {
         $project: {
           image: 1,
+          isFeatured: 1,
         },
       },
       {
@@ -1355,13 +1355,14 @@ app.get(`${apiRoot}/images/getFeatured/:eventId/:author`, async (req, res) => {
               eventName: "$image.eventName",
               eventId: "$image.eventId",
               watermarkedUrl: "$image.watermarkedUrl",
+              url: "$image.url",
               price: "$image.price",
               lastModified: "$image.lastModified",
               fileName: "$image.fileName",
               isReleased: "$isReleased",
               path: "$path",
               pathCount: "$pathCount",
-              isFeatured: "$image.isFeatured",
+              isFeatured: "$isFeatured",
             },
           },
         },
