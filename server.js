@@ -526,9 +526,10 @@ app.get(
 
 //查詢 events
 app.get(`${apiRoot}/events`, (req, res) => {
+  const { sort } = req.query;
   db.collection("eventlistcollection")
     .find({})
-    .sort({ date: 1 })
+    .sort({ date: sort === "asc" ? 1 : -1 })
     .toArray((error, result) => {
       res.send(result);
     });
