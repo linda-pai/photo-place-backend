@@ -578,7 +578,7 @@ app.delete(`${apiRoot}/events/delete/:eventId`, (req, res) => {
 //取得活動下拉選單
 app.get(`${apiRoot}/events/getEventOptions`, (req, res) => {
   db.collection("eventlistcollection")
-    //find by date in past 10 days and future 3 days
+    //find by date in past 14 days and future 1 days
     .find({
       date: {
         $gte: dayjs().subtract(14, "day").format("YYYY-MM-DD"),
@@ -1321,6 +1321,7 @@ app.get(
             pathCount: { $size: "$path" },
             image: 1,
             isReleased: 1,
+            isFeatured: 1,
           },
         },
         {
