@@ -528,7 +528,7 @@ app.get(
 app.get(`${apiRoot}/events`, (req, res) => {
   db.collection("eventlistcollection")
     .find({})
-    .sort({ date: -1 })
+    .sort({ date: 1 })
     .toArray((error, result) => {
       res.send(result);
     });
@@ -584,6 +584,7 @@ app.get(`${apiRoot}/events/getEventOptions`, (req, res) => {
         $gte: dayjs().subtract(14, "day").format("YYYY-MM-DD"),
         $lte: dayjs().add(1, "day").format("YYYY-MM-DD"),
       },
+      isReviewd: true,
     })
     // .find({})
     .project({ eventName: 1, eventId: 1, date: 1 })
