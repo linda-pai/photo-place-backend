@@ -266,7 +266,6 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
         const imageObj = {
           path: pathList,
           image: data,
-          isReleased: false,
         };
 
         await db.collection(`imagecollection/${eventId}`).insertOne(imageObj);
@@ -352,18 +351,10 @@ app.get(
     const eventId = req.params.eventId;
     const author = req.params.author;
 
-    const isReleasedLength = await db
+    const allImageLength = await db
       .collection(`imagecollection/${eventId}`)
       .countDocuments({
         "image.author": author,
-        isReleased: true,
-      });
-
-    const unReleasedLength = await db
-      .collection(`imagecollection/${eventId}`)
-      .countDocuments({
-        "image.author": author,
-        isReleased: false,
       });
 
     const featuredLength = await db
@@ -373,23 +364,24 @@ app.get(
         isFeatured: true,
       });
 
-    res.send({ isReleasedLength, unReleasedLength, featuredLength });
+    res.send({ allImageLength, featuredLength });
   }
 );
 
-app.put(`${apiRoot}/images/releaseByEventId/:eventId`, (req, res) => {
-  const eventId = req.params.eventId;
+//把 isReleased 的照片更新為 true by eventId，目前沒用到
+// app.put(`${apiRoot}/images/releaseByEventId/:eventId`, (req, res) => {
+//   const eventId = req.params.eventId;
 
-  db.collection(`imagecollection/${eventId}`).updateMany(
-    { isReleased: false },
-    {
-      $set: {
-        isReleased: true,
-      },
-    }
-  );
-  res.json({ message: "更新成功", status: 200 });
-});
+//   db.collection(`imagecollection/${eventId}`).updateMany(
+//     { isReleased: false },
+//     {
+//       $set: {
+//         isReleased: true,
+//       },
+//     }
+//   );
+//   res.json({ message: "更新成功", status: 200 });
+// });
 
 //查詢圖片 by 號碼布 & event_id
 app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
@@ -418,7 +410,6 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
               $elemMatch: { $regex: new RegExp(".*" + path + ".*") },
               $ne: [],
             },
-          isReleased: true,
           "image.author": author ? author : { $ne: "" },
           //預設只顯示精選圖片，如果有 path(搜尋關鍵字) 就不管是不是精選
           ...(path ? {} : { isFeatured: true }),
@@ -1313,7 +1304,6 @@ app.get(
         {
           $match: {
             "image.author": author,
-            isReleased: req.query.isReleased === "false" ? false : true,
           },
         },
         {
@@ -1321,7 +1311,6 @@ app.get(
             path: 1,
             pathCount: { $size: "$path" },
             image: 1,
-            isReleased: 1,
             isFeatured: 1,
           },
         },
@@ -1337,7 +1326,6 @@ app.get(
                 price: "$image.price",
                 lastModified: "$image.lastModified",
                 fileName: "$image.fileName",
-                isReleased: "$isReleased",
                 path: "$path",
                 pathCount: "$pathCount",
                 isFeatured: "$isFeatured",
@@ -1468,7 +1456,6 @@ app.get(`${apiRoot}/images/getFeatured/:eventId/:author`, async (req, res) => {
               price: "$image.price",
               lastModified: "$image.lastModified",
               fileName: "$image.fileName",
-              isReleased: "$isReleased",
               path: "$path",
               pathCount: "$pathCount",
               isFeatured: "$isFeatured",
