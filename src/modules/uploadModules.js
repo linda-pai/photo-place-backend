@@ -50,6 +50,24 @@ const getS3Object = async (key) => {
   });
 };
 
+const deleteS3Object = async (key) => {
+  // console.log(key);
+  return new Promise((resolve, reject) => {
+    const params = {
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: key,
+    };
+    s3.deleteObject(params, (error, data) => {
+      if (error) {
+        console.log("error", error);
+        reject(error);
+      }
+      // console.log("data", data);
+      resolve(data);
+    });
+  });
+};
+
 const multerUploader = multer({
   fileFilter: (req, file, done) => {
     if (
@@ -120,6 +138,7 @@ const completeMultipartUpload = async (params) => {
 module.exports = {
   uploadToS3,
   getS3Object,
+  deleteS3Object,
   multerUploader,
   getSignedUploadURL,
   getSignedMultipartUploadURL,

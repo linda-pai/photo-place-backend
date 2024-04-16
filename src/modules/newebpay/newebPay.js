@@ -10,7 +10,6 @@ const newebPay = async (data) => {
     TimeStamp,
     Amt: parseInt(data.totalAmount),
     ItemDesc: data.orderId,
-    MerchantOrderNo: TimeStamp,
   };
 
   // 進行訂單加密

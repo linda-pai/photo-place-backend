@@ -21,18 +21,19 @@ dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 const {
   uploadToS3,
+  deleteS3Object,
   multerUploader,
   getSignedUploadURL,
   getSignedMultipartUploadURL,
   createMultipartUpload,
   completeMultipartUpload,
 } = require("./src/modules/uploadModules");
-const { getWatermarkedImageUrl } = require("./src/modules/drawWatermark");
-
 const {
-  uploadToS3andDetectText,
-  getDetectedByKey,
-} = require("./src/modules/detectText");
+  getWatermarkedImageUrl,
+  getWatermarkedFeaturedImageUrl,
+} = require("./src/modules/drawWatermark");
+
+const { getDetectedByKey } = require("./src/modules/detectText");
 
 var utc = require("dayjs/plugin/utc");
 dayjs.extend(utc);
@@ -82,9 +83,6 @@ mongoUtil.connectToServer(function (err, client) {
   });
 });
 
-// mongoDB path
-//{host}/images/{event_id}/{detected_Number}|common/image.jpg
-
 //TODO:有 bug 有時候會連不到 db
 app.post(`${apiRoot}/user/createUser`, async (req, res) => {
   const userId = req.body.userId || "user-" + UUID.v4().substring(0, 12);
@@ -131,10 +129,110 @@ app.post(`${apiRoot}/images/getSignedUploadURL`, async (req, res) => {
   res.send({ signedUrl, key });
 });
 
+app.post(`${apiRoot}/images/addFeaturedImageWatermark`, async (req, res) => {
+  const { images, watermarkImg, position } = req.body;
+
+  const promises = images.map(async (image) => {
+    const { watermarkedUrl } = await getWatermarkedFeaturedImageUrl({
+      bucketKey: image.url.split(process.env.AWS_BUCKET_URL + "/")[1],
+      watermarkedImageUrl: watermarkImg.split(
+        process.env.AWS_BUCKET_URL + "/"
+      )[1],
+      position: position,
+      path: "/" + image.eventId + "/featured-watermark/",
+      fileName: image.fileName,
+    });
+
+    await db.collection(`imagecollection/${image.eventId}`).updateOne(
+      { "image.id": image.id },
+      {
+        $set: {
+          "image.featuredWatermarkedUrl": watermarkedUrl,
+        },
+      }
+    );
+
+    return {
+      id: image.id,
+      watermarkedUrl,
+    };
+  });
+
+  Promise.all(promises).then((result) => {
+    res.send({ message: "更新成功", result });
+  });
+});
+
+app.get(
+  `${apiRoot}/images/getFeaturedWatermarkImages/:eventId/:author`,
+  async (req, res) => {
+    const { author, eventId } = req.params;
+    db.collection(`imagecollection/${eventId}`)
+      .aggregate([
+        {
+          $unwind: "$image",
+        },
+        {
+          $match: {
+            "image.author": author,
+            isFeatured: true,
+            "image.featuredWatermarkedUrl": { $exists: true },
+          },
+        },
+      ])
+      .project({
+        "image.featuredWatermarkedUrl": 1,
+        "image.id": 1,
+        "image.fileName": 1,
+      })
+      .toArray((error, result) => {
+        const images = result
+          .map((item) => {
+            return {
+              ...item.image,
+              url: item.image.featuredWatermarkedUrl,
+            };
+          })
+          .flat();
+        res.send(images);
+      });
+  }
+);
+
+app.post(`${apiRoot}/images/photographer/watermark`, async (req, res) => {
+  //watermarkImg 寫入 author
+  const { watermarkImg, author } = req.body;
+  await db.collection(`photographercollection`).insertOne({
+    author,
+    watermarkImg: watermarkImg,
+  });
+  res.json({ message: "更新成功" });
+});
+
+app.get(
+  `${apiRoot}/images/photographer/getWatermark/:author`,
+  async (req, res) => {
+    const author = req.params.author;
+    const watermark = await db
+      .collection(`photographercollection`)
+      .find({ author })
+      .toArray();
+    res.send(watermark);
+  }
+);
+
 //1. detectText  2. drawWatermark  3. uploadToS3 by bucketKey
 app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
-  const { key, eventId, eventName, author, price, fileName, lastModified } =
-    req.body;
+  const {
+    key,
+    eventId,
+    eventName,
+    author,
+    authorName,
+    price,
+    fileName,
+    lastModified,
+  } = req.body;
 
   const detectedNumbers = await getDetectedByKey(key);
   const watermarkedImage = await getWatermarkedImageUrl(
@@ -156,22 +254,18 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
         eventId,
         eventName,
         author,
+        authorName,
         lastModified,
       };
 
       try {
-        const paths =
-          detectedNumbers.length > 0
-            ? detectedNumbers
-            : [{ DetectedText: "common" }];
+        const paths = detectedNumbers.length > 0 ? detectedNumbers : [];
 
         const pathList = paths.map(({ DetectedText }) => DetectedText);
 
         const imageObj = {
           path: pathList,
           image: data,
-          author,
-          isReleased: false,
         };
 
         await db.collection(`imagecollection/${eventId}`).insertOne(imageObj);
@@ -189,123 +283,6 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
   );
 });
 
-//上傳圖片 deprecated
-// app.post(
-//   `${apiRoot}/images/uploadAndDetectText`,
-//   multerUploader.single("file"),
-//   async (req, res) => {
-//     //取得 lastModified from req.file
-//     if (!req.file) return res.json({ error: "沒有檔案" });
-//     TODO: try {
-//       return Promise.all([
-//         uploadToS3andDetectText(req.file, "/" + req.body.eventId + "/"), //1. 上傳圖片到S3   -> 辨識號碼               (拿到 originImageUrl & 辨識號碼)
-//         getWatermarkedImageUrl(req.file, "/" + req.body.eventId + "/"), //2. 產生浮水印圖片 -> 上傳浮水印圖片到S3        (拿到 watermarkedImageUrl)
-//       ])
-//         .then(async (response) => {
-//           const { originImageUrl, detectedNumbers, fileName } = response[0];
-//           const { watermarkedUrl } = response[1];
-//           const { eventId, author, uploadId } = req.body;
-
-//           const data = {
-//             id: "img-" + UUID.v4(),
-//             url: originImageUrl,
-//             watermarkedUrl,
-//             fileName,
-//             price: 109,
-//             ...req.body,
-//           };
-//           //依照 eventId 傳到不同的 collection
-//           //path: detectedNumbers or common
-//           try {
-//             const paths =
-//               detectedNumbers.length > 0
-//                 ? detectedNumbers
-//                 : [{ DetectedText: "common" }];
-
-//             const pathList = paths.map(({ DetectedText }) => DetectedText);
-
-//             const imageObj = {
-//               path: pathList,
-//               image: data,
-//               author,
-//               uploadId,
-//             };
-
-//             await db
-//               .collection(`imagecollection/${eventId}`)
-//               .insertOne(imageObj);
-//           } catch (error) {
-//             console.log("DetectedText-err", error);
-//             res.json({ error: "新增失敗" });
-//           }
-
-//           res.status(200).json({
-//             message: "上傳成功",
-//             data,
-//             progress: 100,
-//           });
-//         })
-//         .catch((err) => {
-//           console.log("err", err);
-//           res.json({ error: "新增失敗" });
-//         });
-//     } catch (error) {
-//       console.log(error);
-//       res.json({ error: "新增失敗" });
-//     }
-//   }
-// );
-
-//update 圖片 watermarkedUrl by imageId
-// app.put(`${apiRoot}/images/updateWatermarkedUrl/:eventId`, (req, res) => {
-//   const eventId = req.params.eventId;
-
-//   const updateWatermarkedUrl = async (eventId) => {
-//     const images = await db
-//       .collection(`imagecollection/${eventId}`)
-//       .find({})
-//       .limit(20)
-//       .skip(1600)
-//       .toArray();
-
-//     const flattenData = images.map((item) => item.image).flat();
-//     console.log("flattenData.length", flattenData.length);
-
-//     for (let x = 0, ln = flattenData.length; x < ln; x++) {
-//       setTimeout(
-//         function (y) {
-//           uploadSinglePhoto(y);
-//         },
-//         x * 1500,
-//         x
-//       );
-//     }
-
-//     const uploadSinglePhoto = async (x) => {
-//       const watermarkedImage = await getWatermarkedImageUrlFromRemote(
-//         flattenData[x].url,
-//         "/" + eventId + "/"
-//       );
-
-//       db.collection(`imagecollection/${eventId}`).updateOne(
-//         { "image.id": flattenData[x].id },
-//         {
-//           $set: {
-//             "image.$.watermarkedUrl": watermarkedImage.watermarkedUrl,
-//           },
-//         }
-//       );
-
-//       console.log(
-//         "success!!!watermarkedImage \n",
-//         watermarkedImage.watermarkedUrl
-//       );
-//     };
-//   };
-
-//   updateWatermarkedUrl(eventId);
-// });
-
 //紀錄上傳資訊
 app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
   const TimeStamp = dayjs().utcOffset(8).format("YYYYMMDDHHmmss");
@@ -315,7 +292,7 @@ app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
     chargeAt: null,
   };
 
-  const { eventId, author, images } = req.body;
+  const { eventId, author } = req.body;
   if (!author) return res.json({ message: "新增失敗" });
 
   //if author and eventId is not exist in uploadInfocollection
@@ -330,7 +307,6 @@ app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
           { author, eventId },
           {
             $set: {
-              images: [...result[0].images, ...images],
               lastEditTime: TimeStamp,
             },
           }
@@ -369,75 +345,117 @@ app.get(`${apiRoot}/images/getUploadInfo/:author`, (req, res) => {
     });
 });
 
-// app.put(`${apiRoot}/images/updateByEventId/:eventId`, (req, res) => {
+app.get(
+  `${apiRoot}/images/getUploadImgDetail/:eventId/:author`,
+  async (req, res) => {
+    const eventId = req.params.eventId;
+    const author = req.params.author;
+
+    const allImageLength = await db
+      .collection(`imagecollection/${eventId}`)
+      .countDocuments({
+        "image.author": author,
+      });
+
+    const featuredLength = await db
+      .collection(`imagecollection/${eventId}`)
+      .countDocuments({
+        "image.author": author,
+        isFeatured: true,
+      });
+
+    res.send({ allImageLength, featuredLength });
+  }
+);
+
+//把 isReleased 的照片更新為 true by eventId，目前沒用到
+// app.put(`${apiRoot}/images/releaseByEventId/:eventId`, (req, res) => {
 //   const eventId = req.params.eventId;
 
 //   db.collection(`imagecollection/${eventId}`).updateMany(
-//     {},
+//     { isReleased: false },
 //     {
 //       $set: {
 //         isReleased: true,
 //       },
 //     }
 //   );
-//   res.json({ message: "更新成功" });
+//   res.json({ message: "更新成功", status: 200 });
 // });
 
 //查詢圖片 by 號碼布 & event_id
-app.get(
-  `${apiRoot}/images/getByPathAndEventId/:eventId/:bib`,
-  async (req, res) => {
-    const bid = req.params.bib;
-    const eventId = req.params.eventId;
+app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
+  const path = req.query.path || "";
+  const author = req.query.author || "";
+  const eventId = req.params.eventId;
 
-    const countsPerPage = 40;
-    const page = req.query.page - 1 || 0;
+  const countsPerPage = 15;
+  const page = req.query.page - 1 || 0;
 
-    await db
-      .collection(`imagecollection/${eventId}`)
-      .aggregate([
-        {
-          $unwind: "$image",
+  await db
+    .collection(`imagecollection/${eventId}`)
+    .aggregate([
+      {
+        $unwind: "$image",
+      },
+      {
+        $match: {
+          path:
+            // path === "unIdentify"
+            //   ? {
+            //       $size: 0,
+            //     }
+            //   :
+            {
+              $elemMatch: { $regex: new RegExp(".*" + path + ".*") },
+              $ne: [],
+            },
+          "image.author": author ? author : { $ne: "" },
+          //預設只顯示精選圖片，如果有 path(搜尋關鍵字) 就不管是不是精選
+          ...(path ? {} : { isFeatured: true }),
         },
-        {
-          $match: {
-            path:
-              bid === "all"
-                ? {
-                    $elemMatch: { $regex: new RegExp(".*") },
-                    $ne: "common",
-                  }
-                : {
-                    $elemMatch: { $regex: new RegExp(".*" + bid + ".*") },
-                  },
-            isReleased: true,
-          },
-        },
-        {
-          $group: {
-            _id: "$_id",
-            image: {
-              $push: {
-                id: "$image.id",
-                eventName: "$image.eventName",
-                eventId: "$image.eventId",
-                watermarkedUrl: "$image.watermarkedUrl",
-                price: "$image.price",
-                lastModified: "$image.lastModified",
-              },
+      },
+      {
+        $group: {
+          _id: "$_id",
+          image: {
+            $push: {
+              id: "$image.id",
+              eventName: "$image.eventName",
+              eventId: "$image.eventId",
+              watermarkedUrl: "$image.watermarkedUrl",
+              price: "$image.price",
+              lastModified: "$image.lastModified",
             },
           },
         },
-      ])
-      .sort({ "image.lastModified": 1 })
-      .skip(page * countsPerPage)
-      .limit(countsPerPage)
-      .toArray((error, result) => {
-        const images = result?.map((item) => item.image).flat();
-        res.send(images);
-      });
-  }
-);
+      },
+      {
+        $sort: { "image.lastModified": 1 },
+      },
+      {
+        $facet: {
+          paginatedResults: [
+            { $skip: page * countsPerPage },
+            { $limit: countsPerPage },
+          ],
+          totalCount: [
+            {
+              $count: "count",
+            },
+          ],
+        },
+      },
+    ])
+    .toArray((error, result) => {
+      const images = result[0]?.paginatedResults
+        ? result[0]?.paginatedResults.map((item) => item.image).flat()
+        : [];
+
+      const totalCount = result[0]?.totalCount[0]?.count || 0;
+      res.send({ images, totalCount });
+    });
+});
 
 //取得所有圖片 count
 app.get(`${apiRoot}/images/getCount/:eventId`, async (req, res) => {
@@ -499,9 +517,10 @@ app.get(
 
 //查詢 events
 app.get(`${apiRoot}/events`, (req, res) => {
+  const { sort } = req.query;
   db.collection("eventlistcollection")
     .find({})
-    .sort({ date: -1 })
+    .sort({ date: sort === "asc" ? 1 : -1 })
     .toArray((error, result) => {
       res.send(result);
     });
@@ -513,7 +532,7 @@ app.get(`${apiRoot}/events/getBy/:eventId`, (req, res) => {
   db.collection("eventlistcollection")
     .find({ eventId })
     .toArray((error, result) => {
-      res.send(result[0]);
+      res.send(result[0] || {});
     });
 });
 
@@ -551,7 +570,15 @@ app.delete(`${apiRoot}/events/delete/:eventId`, (req, res) => {
 //取得活動下拉選單
 app.get(`${apiRoot}/events/getEventOptions`, (req, res) => {
   db.collection("eventlistcollection")
-    .find({})
+    //find by date in past 14 days and future 1 days
+    .find({
+      date: {
+        $gte: dayjs().subtract(14, "day").format("YYYY-MM-DD"),
+        $lte: dayjs().add(1, "day").format("YYYY-MM-DD"),
+      },
+      isReviewd: true,
+    })
+    // .find({})
     .project({ eventName: 1, eventId: 1, date: 1 })
     .toArray((error, result) => {
       res.send(result);
@@ -603,8 +630,8 @@ app.post(
     const eventData = {
       eventId: "evt-" + UUID.v4().substring(0, 12),
       ...req.body,
-      isShow: false, //TODO: 預設不顯示
-      isCompleteUpload: false, //TODO: 預設不顯示
+      isShow: false,
+      isCompleteUpload: false,
     };
 
     db.collection("eventlistcollection")
@@ -626,56 +653,6 @@ app.post(
     uploadToS3(file, path).then((result) => res.json(result));
   }
 );
-
-//建立訂單 - 改成 (createOrder) function 了可以刪掉
-// app.post(`${apiRoot}/orders/add`, (req, res) => {
-//   const orderData = {
-//     ...req.body,
-//     createAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
-//     paidAt: null,
-//   };
-
-//   db.collection("ordercollection")
-//     .insertOne(orderData)
-//     .then(async () => {
-//       const user = await db
-//         .collection("usercollection")
-//         .find({ userId: req.body.orderBy })
-//         .project({ token: 1, email: 1, name: 1, userId: 1 })
-//         .toArray();
-//       //寄信
-//       if (user[0]?.email)
-//         await emailSender({
-//           email: user[0]?.email,
-//           subject: `${process.env.EMAIL_PREFIX} PHOTO PACER 攝影小隊 - 訂單成立通知`,
-//           html: `
-//         <div>
-//           <div style={{ margin:0 auto }}>
-//             <h2> Hi ${user[0].name}，您的訂單已成立，</h2>
-//             <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
-//             <p> 至以下網址查看訂單明細：${process.env.CLIENT_DOMAIN}/user/orders</p>
-//             <p>訂單編號：${orderData.orderId} </p>
-//             <p>訂單金額：TWD ${orderData.totalAmount}</p>
-//             <p>感謝您的購買，祝您有美好的一天！</p>
-//             <p>如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
-//             <p>📷 PHOTO PACER 攝影小隊 </p>
-//             <p>聯絡信箱： photopacer@gmail.com</p>
-//             <div>
-//               <p>官方Line：@774uebxu</p>
-//               <img src=${process.env.AWS_BUCKET_URL}/images/common/725ab7f17a21d4b310407e9312be8e12f2037bfdca3b559c83344e6151c1ad71-S_gainfriends_2dbarcodes_GW.png width="65px"/>
-//             </div>
-//           </div>
-//           <img src=${process.env.AWS_BUCKET_URL}/images/common/e76d8b95013eff5cc00520fcd8233755c4d17450bf04d2d0a4111beda623f5a3-photo-pacer-high-resolution-logo+(3).png width="25%"/>
-//         </div>
-//         `,
-//         });
-//       res.json({ message: "新增成功" });
-//     })
-//     .catch((error) => {
-//       console.log("add-error", error);
-//       return res.json({ message: "新增失敗" });
-//     });
-// });
 
 //查詢訂單 by orderId
 app.get(`${apiRoot}/orders/:orderId`, (req, res) => {
@@ -721,7 +698,7 @@ const sendOrderSuccessEmail = async (orderId) => {
             <div>
               <div style={{ margin:0 auto }}>
                 <h2> Hi ${user[0].name}，您的訂單已付款成功，</h2> 
-                <p>即可到訂單查詢頁下載照片：${process.env.CLIENT_DOMAIN}/user/orders</p>
+                <p>即可到訂單查詢頁下載照片：${process.env.CLIENT_WWW_DOMAIN}/user/orders</p>
                 <p>感謝您的購買，期待下次我們賽道再相見！</p> 
                 <p>⬇️⬇️ 如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
                 <p>📷 PHOTO PACER 攝影小隊 </p> 
@@ -757,7 +734,7 @@ const sendSoldEmail = async (author, soldCount) => {
             <div>
               <div style={{ margin:0 auto }}>
                 <h2> Hi ${user[0].name}，您的照片已售出 ${soldCount}張照片，</h2> 
-                <p>查看更多細節 - 上傳紀錄頁：${process.env.CLIENT_DOMAIN}/photographer/uploadDetail</p>
+                <p>查看更多細節 - 上傳紀錄頁：${process.env.CLIENT_WWW_DOMAIN}/photographer/records</p>
                 <p>很高興有機會幫助您賣出照片，期待您下次更多優秀作品！</p>
                 <p>⬇️⬇️ 如有任何問題歡迎聯繫我們！ ⬇️⬇️</p>
                 <p>📷 PHOTO PACER 攝影小隊 </p> 
@@ -912,32 +889,40 @@ const updateUploadInfoSellInfo = async (orderId) => {
     const imagesByAuthorList = Object.keys(imagesByAuthor);
 
     imagesByAuthorList.forEach(async (author) => {
-      const uploadIdList = Object.keys(imagesByAuthor[author]);
-
-      uploadIdList.forEach(async (uploadId) => {
-        const images = imagesByAuthor[author][uploadId];
-        await db.collection(`uploadInfocollection`).updateOne(
-          { uploadId },
-          {
-            $set: {
-              sellInfo: images.map((item) => {
-                const { id, watermarkedUrl, price, eventId } = item.image;
-                return {
-                  orderId,
-                  paymentMethod: order[0].paymentMethod,
-                  price,
-                  eventId,
-                  id,
-                  watermarkedUrl,
-                };
-              }),
-            },
-          }
-        );
-      });
-
       await sendSoldEmail(author, images.length);
+
+      //更新 uploadInfo
+      await db.collection(`uploadInfocollection`).updateOne(
+        {
+          eventId,
+          author,
+        },
+        {
+          $inc: {
+            soldCount: images.length,
+          },
+          //update sold images
+          $push: {
+            soldImages: {
+              orderId,
+              images: images.map((item) => item.image),
+            },
+          },
+        }
+      );
     });
+
+    //更新 image isSold = true
+    await db.collection(`imagecollection/${eventId}`).updateMany(
+      {
+        "image.id": { $in: imagesList },
+      },
+      {
+        $set: {
+          isSold: true,
+        },
+      }
+    );
   });
 };
 
@@ -971,6 +956,27 @@ app.post(`${apiRoot}/linepay/confirm`, async (req, res) => {
 
 //建立訂單
 const createOrder = async (data) => {
+  const { orderId, MerchantOrderNo } = data;
+  //確認訂單是否已經存在
+  const isExist = await db
+    .collection("ordercollection")
+    .find({ orderId })
+    .toArray();
+
+  if (isExist.length > 0) {
+    //update MerchantOrderNo
+    MerchantOrderNo &&
+      db.collection("ordercollection").updateOne(
+        { orderId },
+        {
+          $set: {
+            MerchantOrderNo,
+          },
+        }
+      );
+    return;
+  }
+
   const orderData = {
     ...data,
     createAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
@@ -995,7 +1001,7 @@ const createOrder = async (data) => {
         <div style={{ margin:0 auto }}>
           <h2> Hi ${user[0].name}，您的訂單已成立，</h2> 
           <p> 請於 7 天內完成付款，逾期將自動取消訂單歐～</p>
-          <p> 至以下網址查看訂單明細：${process.env.CLIENT_DOMAIN}/user/orders</p>
+          <p> 至以下網址查看訂單明細：${process.env.CLIENT_WWW_DOMAIN}/user/orders</p>
           <p>訂單編號：${orderData.orderId} </p> 
           <p>訂單金額：TWD ${orderData.totalAmount}</p>  
           <p>感謝您的購買，祝您有美好的一天！</p> 
@@ -1220,15 +1226,25 @@ const ImagesUploadEmailNotify = async (email, eventName, notifyUrl) => {
 
 //multipart upload
 
-app.get("/start-upload", async (req, res, next) => {
+app.post("/start-upload", async (req, res, next) => {
   try {
-    const path = req.query.path;
-    const fileName = req.query.fileName;
+    const { path, fileName } = req.body;
+
+    //TODO: //先問是否有相同檔案
+    // const isExist = await db
+    //   .collection(`imagecollection/${eventId}`)
+    //   .find({ "image.fileName": fileName })
+    //   .toArray();
+
+    // if (isExist.length > 0) {
+    //   return res.send({ status: 200, msg: "已經有相同檔案囉～" });
+    // }
 
     let uploadData = await createMultipartUpload(path, fileName);
     res.send(uploadData);
   } catch (err) {
     console.log("start-upload", err);
+    res.send({ error: err });
   }
 });
 
@@ -1272,12 +1288,12 @@ app.post("/complete-upload", async (req, res, next) => {
   }
 });
 
-//check bibs 用的
+//photographer/* 用的，要有 :author 才能查詢
 app.get(
   `${apiRoot}/images/getByAuthor/:eventId/:author/:sortBy`,
   async (req, res) => {
     const { eventId, author, sortBy } = req.params;
-    const countsPerPage = 40;
+    const countsPerPage = 15;
     const page = req.query.page - 1 || 0;
     await db
       .collection(`imagecollection/${eventId}`)
@@ -1287,11 +1303,16 @@ app.get(
         },
         {
           $match: {
-            author,
+            "image.author": author,
           },
         },
         {
-          $project: { path: 1, pathCount: { $size: "$path" }, image: 1 },
+          $project: {
+            path: 1,
+            pathCount: { $size: "$path" },
+            image: 1,
+            isFeatured: 1,
+          },
         },
         {
           $group: {
@@ -1304,53 +1325,40 @@ app.get(
                 watermarkedUrl: "$image.watermarkedUrl",
                 price: "$image.price",
                 lastModified: "$image.lastModified",
-                isReleased: "$isReleased",
+                fileName: "$image.fileName",
                 path: "$path",
+                pathCount: "$pathCount",
+                isFeatured: "$isFeatured",
               },
             },
-            pathCount: { $first: "$pathCount" },
           },
         },
         {
-          // sort by pathCount or lastModified
-          $sort: { [sortBy]: 1 },
+          $sort: { [`image.${sortBy}`]: 1 },
+        },
+        {
+          $facet: {
+            paginatedResults: [
+              { $skip: page * countsPerPage },
+              { $limit: countsPerPage },
+            ],
+            totalCount: [
+              {
+                $count: "count",
+              },
+            ],
+          },
         },
       ])
-      .skip(page * countsPerPage)
-      .limit(countsPerPage)
       .toArray((error, result) => {
-        const images = result?.map((item) => item.image).flat();
-        res.send(images);
+        const images = result[0]?.paginatedResults
+          .map((item) => item.image)
+          .flat();
+        const totalCount = result[0]?.totalCount[0]?.count || 0;
+        res.send({ images, totalCount });
       });
   }
 );
-
-app.get(
-  `${apiRoot}/images/getByAuthorCount/:eventId/:author`,
-  async (req, res) => {
-    const { eventId, author } = req.params;
-    const count = await db
-      .collection(`imagecollection/${eventId}`)
-      .countDocuments({
-        author,
-      });
-    res.send({ count });
-  }
-);
-
-app.post(`${apiRoot}/images/release`, async (req, res) => {
-  const { eventId, images } = req.body;
-  const fileName = images.map((item) => item.path);
-
-  await db
-    .collection(`imagecollection/${eventId}`)
-    .updateMany(
-      { "image.fileName": { $in: fileName } },
-      { $set: { isReleased: true } }
-    );
-
-  res.send({ status: 200 });
-});
 
 app.post(`${apiRoot}/images/updateBibs`, async (req, res) => {
   const { eventId, imageId, bibs } = req.body;
@@ -1360,3 +1368,156 @@ app.post(`${apiRoot}/images/updateBibs`, async (req, res) => {
 
   res.send({ status: 200 });
 });
+
+//delete image by id
+app.post(
+  `${apiRoot}/images/delete/:eventId/:imageId/:author`,
+  async (req, res) => {
+    const { eventId, imageId, author } = req.params;
+    await db.collection(`imagecollection/${eventId}`).findOneAndDelete(
+      {
+        "image.id": imageId,
+        "image.author": author,
+      },
+      (error, result) => {
+        const key = result.value.image.url
+          .split(`${process.env.AWS_BUCKET_URL}`)
+          .pop();
+        //TODO: not working
+        deleteS3Object(key);
+        res.send({ status: "success" });
+      }
+    );
+  }
+);
+
+//get getPhotographers by eventId
+app.get(`${apiRoot}/images/getPhotographers/:eventId`, async (req, res) => {
+  const eventId = req.params.eventId;
+  const photographers = await db
+    .collection(`uploadInfocollection`)
+    .find({ eventId })
+    .project({ author: 1, name: 1, email: 1, userId: 1 })
+    .toArray();
+
+  res.send(photographers);
+});
+
+//設定 image 為精選
+app.post(
+  `${apiRoot}/images/setFeatured/:eventId/:imageId/:author`,
+  async (req, res) => {
+    const { eventId, imageId, author } = req.params;
+    const { isFeatured } = req.body;
+    await db
+      .collection(`imagecollection/${eventId}`)
+      .updateOne(
+        { "image.id": imageId, "image.author": author },
+        { $set: { isFeatured: isFeatured } }
+      );
+
+    res.send({ status: "success" });
+  }
+);
+
+app.get(`${apiRoot}/images/getFeatured/:eventId/:author`, async (req, res) => {
+  const { eventId, author } = req.params;
+  const page = req.query.page - 1 || 0;
+  const countsPerPage = 15;
+
+  await db
+    .collection(`imagecollection/${eventId}`)
+    .aggregate([
+      {
+        $unwind: "$image",
+      },
+      {
+        $match: {
+          "image.author": author,
+          isFeatured: true,
+        },
+      },
+      {
+        $project: {
+          image: 1,
+          isFeatured: 1,
+        },
+      },
+      {
+        $group: {
+          _id: "$_id",
+          image: {
+            $push: {
+              id: "$image.id",
+              eventName: "$image.eventName",
+              eventId: "$image.eventId",
+              watermarkedUrl: "$image.watermarkedUrl",
+              url: "$image.url",
+              price: "$image.price",
+              lastModified: "$image.lastModified",
+              fileName: "$image.fileName",
+              path: "$path",
+              pathCount: "$pathCount",
+              isFeatured: "$isFeatured",
+            },
+          },
+        },
+      },
+      {
+        $facet: {
+          paginatedResults: [
+            { $skip: page * countsPerPage },
+            { $limit: countsPerPage },
+          ],
+          totalCount: [
+            {
+              $count: "count",
+            },
+          ],
+        },
+      },
+    ])
+    .toArray((error, result) => {
+      const images = result[0]?.paginatedResults
+        .map((item) => item.image)
+        .flat();
+      const totalCount = result[0]?.totalCount[0]?.count || 0;
+      res.send({ images, totalCount });
+    });
+});
+
+//migrate eventId to another eventId
+//未來如果有新增到重複的賽事，可以用這個 api
+// app.post(`${apiRoot}/images/changeEventId`, async (req, res) => {
+//   const { eventId, newEventId } = req.body;
+//   //get event name
+//   const event = await db
+//     .collection("eventlistcollection")
+//     .find({ eventId: newEventId })
+//     .toArray();
+
+//   if (event.length === 0) {
+//     return res.send({ status: 404, msg: "找不到新的 eventId" });
+//   }
+//   //update eventId
+//   await db.collection(`imagecollection/${eventId}`).updateMany(
+//     {},
+//     {
+//       $set: {
+//         "image.eventId": newEventId,
+//         "image.eventName": event[0].eventName,
+//       },
+//     }
+//   );
+//   const images = await db
+//     .collection(`imagecollection/${eventId}`)
+//     .find({})
+//     .toArray();
+
+//   //push to new eventId
+//   await db.collection(`imagecollection/${newEventId}`).insertMany(images);
+//   //delete collection with old eventId
+//   await db.collection(`imagecollection/${eventId}`).drop();
+
+//   res.send({ status: 200 });
+// });
