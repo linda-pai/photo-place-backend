@@ -872,24 +872,21 @@ const updateUploadInfoSellInfo = async (orderId) => {
       .find({ "image.id": { $in: imagesList } })
       .toArray();
 
-    //把 images 分類 by author and uploadId
+    //把 images 分類 by author
     const imagesByAuthor = images.reduce((acc, item) => {
-      const author = item.author;
-      const uploadId = item.uploadId;
+      const author = item.image.author;
       if (!acc[author]) {
-        acc[author] = {};
+        acc[author] = [];
       }
-      if (!acc[author][uploadId]) {
-        acc[author][uploadId] = [];
-      }
-      acc[author][uploadId].push(item);
+      acc[author].push(item);
       return acc;
     }, {});
 
     const imagesByAuthorList = Object.keys(imagesByAuthor);
 
     imagesByAuthorList.forEach(async (author) => {
-      await sendSoldEmail(author, images.length);
+      const soldCount = imagesByAuthor[author].length;
+      await sendSoldEmail(author, soldCount);
 
       //更新 uploadInfo
       await db.collection(`uploadInfocollection`).updateOne(
@@ -899,13 +896,13 @@ const updateUploadInfoSellInfo = async (orderId) => {
         },
         {
           $inc: {
-            soldCount: images.length,
+            soldCount,
           },
           //update sold images
           $push: {
             soldImages: {
               orderId,
-              images: images.map((item) => item.image),
+              images: imagesByAuthor[author].map((item) => item.image),
             },
           },
         }
