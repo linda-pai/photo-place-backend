@@ -110,6 +110,35 @@ app.get(`${apiRoot}/user/getUserInfo/:token`, async (req, res) => {
     });
 });
 
+app.get(`${apiRoot}/user/userList`, async (req, res) => {
+  await db
+    .collection("usercollection")
+    .find({})
+    .project({ token: 1, email: 1, name: 1, role: 1, userId: 1, createTime: 1 })
+    .sort({ createTime: -1 })
+    .toArray((error, result) => {
+      res.send(result);
+    });
+});
+
+app.put(`${apiRoot}/user/update/:userId`, async (req, res) => {
+  const userId = req.params.userId;
+  db.collection("usercollection")
+    .updateOne(
+      { userId },
+      {
+        $set: {
+          ...req.body,
+        },
+      }
+    )
+    .then(() => res.json({ message: "更新成功" }))
+    .catch((error) => {
+      console.log("update-error", error);
+      return res.json({ message: "更新失敗" });
+    });
+});
+
 //取得上傳圖片的簽名網址
 app.post(`${apiRoot}/images/getSignedUploadURL`, async (req, res) => {
   const { signedUrl, key } = await getSignedUploadURL(
