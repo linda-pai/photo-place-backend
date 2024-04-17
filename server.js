@@ -1130,8 +1130,13 @@ app.post(`${apiRoot}/imagesUploadComplete/sendEmail`, async (req, res) => {
   const { email, eventName, notifyUrl } = notifyRecord[0];
 
   try {
-    await ImagesUploadEmailNotify(email, eventName, notifyUrl);
-    await updateNotifyRecord(notifyId, eventId);
+    const sendNotifyEmailRes = await ImagesUploadEmailNotify(
+      email,
+      eventName,
+      notifyUrl
+    );
+    if (sendNotifyEmailRes.status === "200")
+      await updateNotifyRecord(notifyId, eventId);
 
     res.send({ status: 200 });
   } catch (error) {
@@ -1145,24 +1150,38 @@ app.post(
   `${apiRoot}/imagesUploadComplete/sendAllEmail/:eventId`,
   async (req, res) => {
     const eventId = req.params.eventId;
+    const { isAll } = req.body;
 
     const notifyRecord = await db
       .collection(`notifycollection`)
-      .find({ eventId })
+      .find({ eventId, ...(!isAll ? { status: "pending" } : {}) })
       .toArray();
 
-    notifyRecord.forEach(async (item) => {
-      const { email, eventName, notifyUrl } = item;
-
+    //new Promise with Settimeout
+    const notifyRecordPromise = notifyRecord.map(async (item, index) => {
+      const { email, eventName, notifyUrl, notifyId } = item;
       try {
-        await ImagesUploadEmailNotify(email, eventName, notifyUrl);
-        await updateNotifyRecord(item.notifyId, eventId);
+        await new Promise((resolve) =>
+          setTimeout(async () => {
+            const sendNotifyEmailRes = await ImagesUploadEmailNotify(
+              email,
+              eventName,
+              notifyUrl
+            );
+            if (sendNotifyEmailRes.status === "200")
+              await updateNotifyRecord(notifyId, eventId);
+
+            resolve();
+          }, 1000 * index)
+        );
       } catch (error) {
         console.log("ImagesUploadEmailNotify-error", error);
       }
     });
 
-    res.send({ status: "success" });
+    await Promise.all(notifyRecordPromise).then(() => {
+      res.send({ status: "success" });
+    });
   }
 );
 
