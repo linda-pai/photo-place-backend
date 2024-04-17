@@ -2,7 +2,6 @@ const Express = require("express");
 const cors = require("cors");
 const UUID = require("uuid");
 const emailSender = require("./src/modules/emailSender");
-const session = require("cookie-session");
 const dayjs = require("dayjs");
 const linePay = require("./src/modules/linePay/linePay");
 const linePayConfirm = require("./src/modules/linePay/linePayConfirm");
@@ -60,15 +59,6 @@ const corsOptions = {
   },
   oprtionsSuccessStatus: 200,
 };
-
-app.use(
-  session({
-    secret: "keyboard cat",
-    resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false }, //TODO: 研究：正式環境要改成 true
-  })
-);
 
 app.use(cors(corsOptions));
 app.use("/user", userRouter);
