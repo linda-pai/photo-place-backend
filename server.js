@@ -571,6 +571,21 @@ app.get(`${apiRoot}/events/getBy/:eventId`, (req, res) => {
     });
 });
 
+app.get(`${apiRoot}/events/checkUploadable/:eventId`, (req, res) => {
+  const eventId = req.params.eventId;
+  db.collection("eventlistcollection")
+    .find({
+      date: {
+        $gte: dayjs().subtract(14, "day").format("YYYY-MM-DD"),
+        $lte: dayjs().add(1, "day").format("YYYY-MM-DD"),
+      },
+    })
+    .toArray((error, result) => {
+      const isUploadable = result.some((item) => item.eventId === eventId);
+      res.send({ isUploadable });
+    });
+});
+
 //更新 event by id
 app.put(`${apiRoot}/events/update/:eventId`, (req, res) => {
   const eventId = req.params.eventId;
