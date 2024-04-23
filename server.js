@@ -303,16 +303,23 @@ app.post(`${apiRoot}/images/addWatermark`, async (req, res) => {
 });
 
 //紀錄上傳資訊
-app.post(`${apiRoot}/images/writeUploadInfo`, (req, res) => {
+app.post(`${apiRoot}/images/writeUploadInfo`, async (req, res) => {
   const TimeStamp = dayjs().utcOffset(8).format("YYYYMMDDHHmmss");
+
+  const { eventId, author } = req.body;
+
+  if (!author) return res.json({ message: "新增失敗" });
+  const eventDate = await db
+    .collection(`eventlistcollection`)
+    .find({ eventId })
+    .toArray();
+
   const data = {
     ...req.body,
+    date: eventDate[0]?.date,
     createAt: TimeStamp,
     chargeAt: null,
   };
-
-  const { eventId, author } = req.body;
-  if (!author) return res.json({ message: "新增失敗" });
 
   //if author and eventId is not exist in uploadInfocollection
   db.collection(`uploadInfocollection`)
@@ -383,7 +390,14 @@ app.get(
         isFeatured: true,
       });
 
-    res.send({ allImageLength, featuredLength });
+    const removeImageLength = await db
+      .collection(`imagecollection/${eventId}`)
+      .countDocuments({
+        "image.author": author,
+        isRemoved: true,
+      });
+
+    res.send({ allImageLength, featuredLength, removeImageLength });
   }
 );
 
@@ -408,7 +422,7 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
   const author = req.query.author || "";
   const eventId = req.params.eventId;
 
-  const countsPerPage = 15;
+  const countsPerPage = 20;
   const page = req.query.page - 1 || 0;
 
   await db
@@ -419,19 +433,19 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
       },
       {
         $match: {
-          path:
-            // path === "unIdentify"
-            //   ? {
-            //       $size: 0,
-            //     }
-            //   :
-            {
-              $elemMatch: { $regex: new RegExp(".*" + path + ".*") },
-              $ne: [],
-            },
+          ...(path === ""
+            ? {}
+            : {
+                path: {
+                  $elemMatch: { $regex: new RegExp(".*" + path + ".*") },
+                },
+              }),
           "image.author": author ? author : { $ne: "" },
           //預設只顯示精選圖片，如果有 path(搜尋關鍵字) 就不管是不是精選
           ...(path ? {} : { isFeatured: true }),
+          isRemoved: {
+            $ne: true,
+          },
         },
       },
       {
@@ -445,6 +459,8 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
               watermarkedUrl: "$image.watermarkedUrl",
               price: "$image.price",
               lastModified: "$image.lastModified",
+              authorName: "$image.authorName",
+              author: "$image.author",
             },
           },
         },
@@ -889,6 +905,13 @@ const updateUploadInfoSellInfo = async (orderId) => {
     const images = await db
       .collection(`imagecollection/${eventId}`)
       .find({ "image.id": { $in: imagesList } })
+      .project({
+        "image.id": 1,
+        "image.author": 1,
+        "image.watermarkedUrl": 1,
+        "image.price": 1,
+        "image.fileName": 1,
+      })
       .toArray();
 
     //把 images 分類 by author
@@ -922,6 +945,7 @@ const updateUploadInfoSellInfo = async (orderId) => {
             soldImages: {
               orderId,
               images: imagesByAuthor[author].map((item) => item.image),
+              soldAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
             },
           },
         }
@@ -1437,6 +1461,28 @@ app.get(`${apiRoot}/images/getPhotographers/:eventId`, async (req, res) => {
 
   res.send(photographers);
 });
+
+app.get(
+  `${apiRoot}/photographer/getSoldInfoByAuthor/:eventId/:author`,
+  async (req, res) => {
+    const { eventId, author } = req.params;
+
+    const soldInfo = await db
+      .collection(`uploadInfocollection`)
+      .find({ eventId, author })
+      .project({
+        orderId: 1,
+        soldImages: 1,
+        eventName: 1,
+        eventId: 1,
+        name: 1,
+        date: 1,
+      })
+      .toArray();
+
+    res.send(soldInfo[0] || {});
+  }
+);
 
 //設定 image 為精選
 app.post(
