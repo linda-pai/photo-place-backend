@@ -492,6 +492,55 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
     });
 });
 
+//取得相同攝影師的[0,1]照片 lastModified - 5秒內的照片跟 5秒後的照片
+app.post(`${apiRoot}/images/getByLastModified/:eventId`, async (req, res) => {
+  const eventId = req.params.eventId;
+  const { author, lastModified, lastModifiedEnd } = req.body;
+
+  db.collection(`imagecollection/${eventId}`)
+    .aggregate([
+      {
+        $unwind: "$image",
+      },
+      {
+        $match: {
+          "image.lastModified": {
+            $gte: lastModified - 5000,
+            $lte: lastModifiedEnd + 5000,
+          },
+          "image.author": author,
+          isRemoved: {
+            $ne: true,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$_id",
+          image: {
+            $push: {
+              id: "$image.id",
+              eventName: "$image.eventName",
+              eventId: "$image.eventId",
+              watermarkedUrl: "$image.watermarkedUrl",
+              price: "$image.price",
+              lastModified: "$image.lastModified",
+              authorName: "$image.authorName",
+            },
+          },
+        },
+      },
+      {
+        $sort: { "image.lastModified": 1 },
+      },
+      { $limit: 50 },
+    ])
+    .toArray((error, result) => {
+      const images = result.map((item) => item.image).flat();
+      res.send(images);
+    });
+});
+
 //取得所有圖片 count
 app.get(`${apiRoot}/images/getCount/:eventId`, async (req, res) => {
   const eventId = req.params.eventId;
@@ -1521,7 +1570,7 @@ app.post(
 app.get(`${apiRoot}/images/getFeatured/:eventId/:author`, async (req, res) => {
   const { eventId, author } = req.params;
   const page = req.query.page - 1 || 0;
-  const countsPerPage = 15;
+  const countsPerPage = 20;
 
   await db
     .collection(`imagecollection/${eventId}`)
