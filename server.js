@@ -20,7 +20,6 @@ dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 const {
   uploadToS3,
-  deleteS3Object,
   multerUploader,
   getSignedUploadURL,
   getSignedMultipartUploadURL,
