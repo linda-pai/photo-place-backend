@@ -1367,7 +1367,7 @@ app.get(
   `${apiRoot}/images/getByAuthor/:eventId/:author/:sortBy`,
   async (req, res) => {
     const { eventId, author, sortBy } = req.params;
-    const countsPerPage = 15;
+    const countsPerPage = 20;
     const page = req.query.page - 1 || 0;
     await db
       .collection(`imagecollection/${eventId}`)
@@ -1386,6 +1386,7 @@ app.get(
             pathCount: { $size: "$path" },
             image: 1,
             isFeatured: 1,
+            isRemoved: 1,
           },
         },
         {
@@ -1403,6 +1404,7 @@ app.get(
                 path: "$path",
                 pathCount: "$pathCount",
                 isFeatured: "$isFeatured",
+                isRemoved: "$isRemoved",
               },
             },
           },
@@ -1444,24 +1446,24 @@ app.post(`${apiRoot}/images/updateBibs`, async (req, res) => {
 });
 
 //delete image by id
-app.post(
+app.put(
   `${apiRoot}/images/delete/:eventId/:imageId/:author`,
   async (req, res) => {
     const { eventId, imageId, author } = req.params;
-    await db.collection(`imagecollection/${eventId}`).findOneAndDelete(
+    const { isRemoved } = req.body;
+    await db.collection(`imagecollection/${eventId}`).updateOne(
       {
         "image.id": imageId,
         "image.author": author,
       },
-      (error, result) => {
-        const key = result.value.image.url
-          .split(`${process.env.AWS_BUCKET_URL}`)
-          .pop();
-        //TODO: not working
-        deleteS3Object(key);
-        res.send({ status: "success" });
+      {
+        $set: {
+          isRemoved: isRemoved,
+        },
       }
     );
+
+    res.send({ status: "success" });
   }
 );
 
