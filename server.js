@@ -431,11 +431,7 @@ app.get(
   `${apiRoot}/images/getDetectedImageLength/:eventId/:author`,
   async (req, res) => {
     const eventId = req.params.eventId;
-    const detectedImageLength = await db
-      .collection(`imagecollection/${eventId}`)
-      .countDocuments({
-        "image.watermarkedUrl": { $exists: true },
-      });
+    const detectedImageLength = await getDetectedImageLength(eventId);
 
     res.send({ detectedImageLength });
   }
@@ -501,6 +497,7 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
               lastModified: "$image.lastModified",
               authorName: "$image.authorName",
               author: "$image.author",
+              isFeatured: "$isFeatured",
             },
           },
         },
@@ -1473,76 +1470,82 @@ app.post("/complete-upload", async (req, res, next) => {
   }
 });
 
+const detectAndWatermark = async (eventId, imageItem) => {
+  const { id, url, fileName } = imageItem.image;
+  const key = decodeURIComponent(
+    url?.split(process.env.AWS_BUCKET_URL + "/")[1]
+  );
+
+  const detectedNumbers = await getDetectedByKey(key);
+  const watermarkedImage = await getWatermarkedImageUrl(
+    key,
+    "/" + eventId + "/",
+    fileName
+  );
+
+  Promise.all([detectedNumbers, watermarkedImage]).then(
+    async ([detectedNumbers, watermarkedImage]) => {
+      const paths = detectedNumbers.length > 0 ? detectedNumbers : [];
+      const pathList = paths.map(({ DetectedText }) => DetectedText);
+      const { watermarkedUrl } = watermarkedImage;
+
+      await db.collection(`imagecollection/${eventId}`).updateOne(
+        {
+          "image.id": id,
+        },
+        {
+          $set: {
+            "image.watermarkedUrl": watermarkedUrl,
+            path: pathList,
+          },
+        }
+      );
+      return { watermarkedUrl, pathList };
+    }
+  );
+};
+
+const detectAndWatermarkQueue = async (eventId, imageArray) => {
+  //one by one wait for the previous one to finish
+  const results = await imageArray.reduce(
+    (promise, item) =>
+      promise.then((result) =>
+        detectAndWatermark(eventId, item).then((res) => [...result, res])
+      ),
+    Promise.resolve([])
+  );
+
+  return results;
+};
+
 //找到 image watermark url 為空的，並且 detectText and add watermark url，更新 db
 app.post(
   `${apiRoot}/images/updateWatermarkUrlAndDetectText`,
   async (req, res) => {
     const { eventId, author, isAll } = req.body;
-    const images = await db
+
+    const imageArray = await db
       .collection(`imagecollection/${eventId}`)
       .find({
-        "image.watermarkedUrl": { $exists: false },
         ...(isAll ? {} : { "image.author": author }),
+        "image.watermarkedUrl": { $exists: false },
       })
       .toArray();
 
-    const chunkArray = (arr, size) =>
-      Array.from({ length: Math.ceil(arr.length / size) }, (v, i) =>
-        arr.slice(i * size, i * size + size)
-      );
-
-    //每 15 筆為一組，一組更新完成後，再更新下一組
-    const imagesGroup = chunkArray(images, 15);
-
-    const updateWatermarkUrlPromise = imagesGroup.map(async (group, index) => {
-      //把event iscompleteUpload 設為 true
-      if (index === 1) {
-        await db.collection("eventlistcollection").updateOne(
-          { eventId },
-          {
-            $set: {
-              isCompleteUpload: true,
-            },
-          }
-        );
-      }
-
-      const groupPromise = group.map(async (item) => {
-        const { id, url, fileName } = item.image;
-
-        const key = decodeURIComponent(
-          url.split(process.env.AWS_BUCKET_URL + "/")[1]
-        );
-
-        const detectedNumbers = await getDetectedByKey(key);
-        const { watermarkedUrl } = await getWatermarkedImageUrl(
-          key,
-          "/" + eventId + "/",
-          fileName
-        );
-
-        const paths = detectedNumbers.length > 0 ? detectedNumbers : [];
-        const pathList = paths.map(({ DetectedText }) => DetectedText);
-
-        await db.collection(`imagecollection/${eventId}`).updateOne(
-          { "image.id": id },
-          {
-            $set: {
-              "image.watermarkedUrl": watermarkedUrl,
-              path: pathList,
-            },
-          }
-        );
-      });
-
-      await Promise.all(groupPromise);
-    });
-
-    await Promise.all(updateWatermarkUrlPromise).then(() => {
+    await detectAndWatermarkQueue(eventId, imageArray).then(() => {
       res.send({ status: 200 });
     });
   }
 );
+
+const getDetectedImageLength = async (eventId) => {
+  const detectedImageLength = await db
+    .collection(`imagecollection/${eventId}`)
+    .countDocuments({
+      "image.watermarkedUrl": { $exists: true },
+    });
+  return detectedImageLength;
+};
 
 //photographer/* 用的，要有 :author 才能查詢
 app.get(
@@ -1551,6 +1554,9 @@ app.get(
     const { eventId, author, sortBy } = req.params;
     const countsPerPage = 24;
     const page = req.query.page - 1 || 0;
+
+    const detectedImageLength = await getDetectedImageLength(eventId);
+
     await db
       .collection(`imagecollection/${eventId}`)
       .aggregate([
@@ -1613,7 +1619,7 @@ app.get(
           .map((item) => item.image)
           .flat();
         const totalCount = result[0]?.totalCount[0]?.count || 0;
-        res.send({ images, totalCount });
+        res.send({ images, totalCount, detectedImageLength });
       });
   }
 );
