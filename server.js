@@ -358,45 +358,86 @@ app.post(`${apiRoot}/images/updateUploadInfo`, (req, res) => {
   res.json({ message: "更新成功" });
 });
 
+const getImageInfoByEventId = async (eventId, author) => {
+  const allImageLength = await db
+    .collection(`imagecollection/${eventId}`)
+    .countDocuments({
+      "image.author": author,
+    });
+
+  const featuredLength = await db
+    .collection(`imagecollection/${eventId}`)
+    .countDocuments({
+      "image.author": author,
+      isFeatured: true,
+    });
+
+  const removeImageLength = await db
+    .collection(`imagecollection/${eventId}`)
+    .countDocuments({
+      "image.author": author,
+      isRemoved: true,
+    });
+
+  const detectedImageLength = await db
+    .collection(`imagecollection/${eventId}`)
+    .countDocuments({
+      "image.author": author,
+      "image.watermarkedUrl": { $exists: true },
+    });
+
+  return {
+    allImageLength: allImageLength || 0,
+    featuredLength: featuredLength || 0,
+    removeImageLength: removeImageLength || 0,
+    detectedImageLength: detectedImageLength || 0,
+  };
+};
+
 //查詢上傳資訊 by author
-app.get(`${apiRoot}/images/getUploadInfo/:author`, (req, res) => {
+app.get(`${apiRoot}/images/getUploadInfo/:author`, async (req, res) => {
   const author = req.params.author;
 
-  db.collection(`uploadInfocollection`)
+  await db
+    .collection(`uploadInfocollection`)
     .find({ author })
     .sort({ createAt: -1 })
-    .toArray((error, result) => {
-      res.send(result);
+    .toArray(async (error, result) => {
+      const newResult = await Promise.all(
+        result.map(async (item) => {
+          const eventId = item.eventId;
+
+          const {
+            allImageLength,
+            featuredLength,
+            removeImageLength,
+            detectedImageLength,
+          } = await getImageInfoByEventId(eventId, author);
+
+          item.allImageLength = allImageLength || 0;
+          item.featuredLength = featuredLength || 0;
+          item.removeImageLength = removeImageLength || 0;
+          item.detectedImageLength = detectedImageLength || 0;
+
+          return item;
+        })
+      );
+      res.send(newResult);
     });
 });
 
+//get watermarkUrl 不等於空的圖片數量
 app.get(
-  `${apiRoot}/images/getUploadImgDetail/:eventId/:author`,
+  `${apiRoot}/images/getDetectedImageLength/:eventId/:author`,
   async (req, res) => {
     const eventId = req.params.eventId;
-    const author = req.params.author;
-
-    const allImageLength = await db
+    const detectedImageLength = await db
       .collection(`imagecollection/${eventId}`)
       .countDocuments({
-        "image.author": author,
+        "image.watermarkedUrl": { $exists: true },
       });
 
-    const featuredLength = await db
-      .collection(`imagecollection/${eventId}`)
-      .countDocuments({
-        "image.author": author,
-        isFeatured: true,
-      });
-
-    const removeImageLength = await db
-      .collection(`imagecollection/${eventId}`)
-      .countDocuments({
-        "image.author": author,
-        isRemoved: true,
-      });
-
-    res.send({ allImageLength, featuredLength, removeImageLength });
+    res.send({ detectedImageLength });
   }
 );
 
@@ -421,7 +462,7 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
   const author = req.query.author || "";
   const eventId = req.params.eventId;
 
-  const countsPerPage = 20;
+  const countsPerPage = 24;
   const page = req.query.page - 1 || 0;
 
   await db
@@ -624,7 +665,7 @@ app.get(`${apiRoot}/events/checkUploadable/:eventId`, (req, res) => {
   db.collection("eventlistcollection")
     .find({
       date: {
-        $gte: dayjs().subtract(14, "day").format("YYYY-MM-DD"),
+        $gte: dayjs().subtract(7, "day").format("YYYY-MM-DD"),
         $lte: dayjs().add(1, "day").format("YYYY-MM-DD"),
       },
     })
@@ -668,13 +709,13 @@ app.delete(`${apiRoot}/events/delete/:eventId`, (req, res) => {
 //取得活動下拉選單
 app.get(`${apiRoot}/events/getEventOptions`, (req, res) => {
   db.collection("eventlistcollection")
-    //find by date in past 14 days and future 1 days
+    //find by date in past 7 days and future 1 days
     .find({
       date: {
-        $gte: dayjs().subtract(14, "day").format("YYYY-MM-DD"),
+        $gte: dayjs().subtract(7, "day").format("YYYY-MM-DD"),
         $lte: dayjs().add(1, "day").format("YYYY-MM-DD"),
       },
-      isReviewd: true,
+      isReviewed: true,
     })
     // .find({})
     .project({ eventName: 1, eventId: 1, date: 1 })
@@ -1393,7 +1434,9 @@ app.get("/get-upload-url", async (req, res, next) => {
 
 app.post("/complete-upload", async (req, res, next) => {
   try {
-    const { key, parts, uploadId } = req.body;
+    const { uploadData, parts, uploadId } = req.body;
+    const { key, eventId } = uploadData;
+
     let params = {
       Bucket: process.env.AWS_BUCKET_NAME,
       Key: key,
@@ -1403,6 +1446,26 @@ app.post("/complete-upload", async (req, res, next) => {
       UploadId: uploadId,
     };
     let completeUploadPromised = await completeMultipartUpload(params);
+
+    if (completeUploadPromised.Location) {
+      //紀錄到 db
+      const data = {
+        id: "img-" + UUID.v4(),
+        url: completeUploadPromised.Location,
+        ...uploadData,
+      };
+
+      //delete key
+      delete data.key;
+
+      await db.collection(`imagecollection/${eventId}`).insertOne({
+        path: [],
+        image: data,
+        isFeatured: false,
+        isRemoved: false,
+      });
+    }
+
     res.send({ data: completeUploadPromised });
   } catch (err) {
     console.log("complete-upload", err);
@@ -1415,7 +1478,7 @@ app.get(
   `${apiRoot}/images/getByAuthor/:eventId/:author/:sortBy`,
   async (req, res) => {
     const { eventId, author, sortBy } = req.params;
-    const countsPerPage = 20;
+    const countsPerPage = 24;
     const page = req.query.page - 1 || 0;
     await db
       .collection(`imagecollection/${eventId}`)
@@ -1527,6 +1590,68 @@ app.get(`${apiRoot}/images/getPhotographers/:eventId`, async (req, res) => {
   res.send(photographers);
 });
 
+//get all uploadInfo
+app.get(`${apiRoot}/cms/getUploadInfo`, async (req, res) => {
+  await db
+    .collection(`uploadInfocollection`)
+    .find({})
+    .toArray((error, result) => {
+      //group by same eventId
+      const uploadInfo = result.reduce((acc, item) => {
+        const eventId = item.eventId;
+        if (!acc[eventId]) {
+          acc[eventId] = {
+            eventId,
+            eventName: item.eventName,
+            photographers: [],
+          };
+        }
+        acc[eventId].photographers.push({
+          author: item.author,
+          authorName: item.name,
+          createAt: item.createAt,
+          lastEditTime: item.lastEditTime,
+          soldCount: item.soldCount,
+          soldImages: item.soldImages,
+        });
+
+        return acc;
+      }, {});
+
+      res.send(Object.values(uploadInfo));
+    });
+});
+
+app.post(`${apiRoot}/cms/getImageInfoByEventId/:eventId`, async (req, res) => {
+  const { author } = req.body;
+  const { eventId } = req.params;
+
+  const {
+    allImageLength,
+    featuredLength,
+    removeImageLength,
+    detectedImageLength,
+  } = await getImageInfoByEventId(eventId, author);
+
+  res.send({
+    allImageLength,
+    featuredLength,
+    removeImageLength,
+    detectedImageLength,
+  });
+});
+
+//取得 uploadInfo by eventId
+app.get(`${apiRoot}/cms/getUploadInfo/:eventId`, async (req, res) => {
+  const eventId = req.params.eventId;
+  const uploadInfo = await db
+    .collection(`uploadInfocollection`)
+    .find({ eventId })
+    .toArray();
+
+  res.send(uploadInfo);
+});
+
 app.get(
   `${apiRoot}/photographer/getSoldInfoByAuthor/:eventId/:author`,
   async (req, res) => {
@@ -1569,7 +1694,7 @@ app.post(
 app.get(`${apiRoot}/images/getFeatured/:eventId/:author`, async (req, res) => {
   const { eventId, author } = req.params;
   const page = req.query.page - 1 || 0;
-  const countsPerPage = 20;
+  const countsPerPage = 24;
 
   await db
     .collection(`imagecollection/${eventId}`)
@@ -1631,39 +1756,3 @@ app.get(`${apiRoot}/images/getFeatured/:eventId/:author`, async (req, res) => {
       res.send({ images, totalCount });
     });
 });
-
-//migrate eventId to another eventId
-//未來如果有新增到重複的賽事，可以用這個 api
-// app.post(`${apiRoot}/images/changeEventId`, async (req, res) => {
-//   const { eventId, newEventId } = req.body;
-//   //get event name
-//   const event = await db
-//     .collection("eventlistcollection")
-//     .find({ eventId: newEventId })
-//     .toArray();
-
-//   if (event.length === 0) {
-//     return res.send({ status: 404, msg: "找不到新的 eventId" });
-//   }
-//   //update eventId
-//   await db.collection(`imagecollection/${eventId}`).updateMany(
-//     {},
-//     {
-//       $set: {
-//         "image.eventId": newEventId,
-//         "image.eventName": event[0].eventName,
-//       },
-//     }
-//   );
-//   const images = await db
-//     .collection(`imagecollection/${eventId}`)
-//     .find({})
-//     .toArray();
-
-//   //push to new eventId
-//   await db.collection(`imagecollection/${newEventId}`).insertMany(images);
-//   //delete collection with old eventId
-//   await db.collection(`imagecollection/${eventId}`).drop();
-
-//   res.send({ status: 200 });
-// });
