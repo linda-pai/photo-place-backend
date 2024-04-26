@@ -1473,6 +1473,77 @@ app.post("/complete-upload", async (req, res, next) => {
   }
 });
 
+//找到 image watermark url 為空的，並且 detectText and add watermark url，更新 db
+app.post(
+  `${apiRoot}/images/updateWatermarkUrlAndDetectText`,
+  async (req, res) => {
+    const { eventId, author, isAll } = req.body;
+    const images = await db
+      .collection(`imagecollection/${eventId}`)
+      .find({
+        "image.watermarkedUrl": { $exists: false },
+        ...(isAll ? {} : { "image.author": author }),
+      })
+      .toArray();
+
+    const chunkArray = (arr, size) =>
+      Array.from({ length: Math.ceil(arr.length / size) }, (v, i) =>
+        arr.slice(i * size, i * size + size)
+      );
+
+    //每 15 筆為一組，一組更新完成後，再更新下一組
+    const imagesGroup = chunkArray(images, 15);
+
+    const updateWatermarkUrlPromise = imagesGroup.map(async (group, index) => {
+      //把event iscompleteUpload 設為 true
+      if (index === 1) {
+        await db.collection("eventlistcollection").updateOne(
+          { eventId },
+          {
+            $set: {
+              isCompleteUpload: true,
+            },
+          }
+        );
+      }
+
+      const groupPromise = group.map(async (item) => {
+        const { id, url, fileName } = item.image;
+
+        const key = decodeURIComponent(
+          url.split(process.env.AWS_BUCKET_URL + "/")[1]
+        );
+
+        const detectedNumbers = await getDetectedByKey(key);
+        const { watermarkedUrl } = await getWatermarkedImageUrl(
+          key,
+          "/" + eventId + "/",
+          fileName
+        );
+
+        const paths = detectedNumbers.length > 0 ? detectedNumbers : [];
+        const pathList = paths.map(({ DetectedText }) => DetectedText);
+
+        await db.collection(`imagecollection/${eventId}`).updateOne(
+          { "image.id": id },
+          {
+            $set: {
+              "image.watermarkedUrl": watermarkedUrl,
+              path: pathList,
+            },
+          }
+        );
+      });
+
+      await Promise.all(groupPromise);
+    });
+
+    await Promise.all(updateWatermarkUrlPromise).then(() => {
+      res.send({ status: 200 });
+    });
+  }
+);
+
 //photographer/* 用的，要有 :author 才能查詢
 app.get(
   `${apiRoot}/images/getByAuthor/:eventId/:author/:sortBy`,
