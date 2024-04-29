@@ -22,10 +22,13 @@ const getDetectedNumbers = async (detectKey) => {
         resolve([]);
       } else {
         // console.log(`Detected Text for: ${fileName}`);
+        const checkTextLengthAndIsNumber = (text, minimun) =>
+          text.length >= minimun && !isNaN(text);
         try {
           let detectedNumbers = [];
           response.TextDetections.map((label) =>
-            label.Confidence > 75 && Number(label.DetectedText)
+            label.Confidence > 75 &&
+            Number(checkTextLengthAndIsNumber(label.DetectedText, 3))
               ? detectedNumbers.push({
                   DetectedText: label.DetectedText,
                   Confidence: label.Confidence,
