@@ -1564,10 +1564,11 @@ app.post(`${apiRoot}/images/updateIsFeatured`, async (req, res) => {
   res.send({ status: 200 });
 });
 
-const getDetectedImageLength = async (eventId) => {
+const getDetectedImageLength = async (eventId, author) => {
   const detectedImageLength = await db
     .collection(`imagecollection/${eventId}`)
     .countDocuments({
+      "image.author": author,
       "image.watermarkedUrl": { $exists: true },
     });
   return detectedImageLength;
@@ -1581,7 +1582,7 @@ app.get(
     const countsPerPage = 24;
     const page = req.query.page - 1 || 0;
 
-    const detectedImageLength = await getDetectedImageLength(eventId);
+    const detectedImageLength = await getDetectedImageLength(eventId, author);
 
     await db
       .collection(`imagecollection/${eventId}`)
@@ -1777,25 +1778,34 @@ app.get(
   }
 );
 
-//設定 image 為精選
+//設定 image 為精選或移除
 app.post(
-  `${apiRoot}/images/setFeatured/:eventId/:imageId/:author`,
+  `${apiRoot}/images/setStatus/:eventId/:imageId/:author`,
   async (req, res) => {
     const { eventId, imageId, author } = req.params;
-    const { isFeatured } = req.body;
-    await db
-      .collection(`imagecollection/${eventId}`)
-      .updateOne(
-        { "image.id": imageId, "image.author": author },
-        { $set: { isFeatured: isFeatured } }
-      );
+    const isFeatured = req.body?.isFeatured;
+    const isRemoved = req.body?.isRemoved;
+
+    await db.collection(`imagecollection/${eventId}`).updateOne(
+      { "image.id": imageId, "image.author": author },
+      {
+        $set: {
+          ...(isFeatured !== undefined && { isFeatured: isFeatured }),
+          ...(isRemoved !== undefined && { isRemoved: isFeatured }),
+        },
+      }
+    );
 
     res.send({ status: "success" });
   }
 );
 
-app.get(`${apiRoot}/images/getFeatured/:eventId/:author`, async (req, res) => {
+app.get(`${apiRoot}/images/getByStatus/:eventId/:author`, async (req, res) => {
   const { eventId, author } = req.params;
+  const status = req.query.status;
+  const isFeatured = status === "featured";
+  const isRemoved = status === "removed";
+
   const page = req.query.page - 1 || 0;
   const countsPerPage = 24;
 
@@ -1808,13 +1818,15 @@ app.get(`${apiRoot}/images/getFeatured/:eventId/:author`, async (req, res) => {
       {
         $match: {
           "image.author": author,
-          isFeatured: true,
+          ...(isFeatured && { isFeatured: true }),
+          ...(isRemoved && { isRemoved: true }),
         },
       },
       {
         $project: {
           image: 1,
-          isFeatured: 1,
+          ...(isFeatured && { isFeatured: 1 }),
+          ...(isRemoved && { isRemoved: 1 }),
         },
       },
       {
@@ -1826,16 +1838,20 @@ app.get(`${apiRoot}/images/getFeatured/:eventId/:author`, async (req, res) => {
               eventName: "$image.eventName",
               eventId: "$image.eventId",
               watermarkedUrl: "$image.watermarkedUrl",
-              url: "$image.url",
+              // url: "$image.url",
               price: "$image.price",
               lastModified: "$image.lastModified",
               fileName: "$image.fileName",
               path: "$path",
               pathCount: "$pathCount",
               isFeatured: "$isFeatured",
+              isRemoved: "$isRemoved",
             },
           },
         },
+      },
+      {
+        $sort: { "image.lastModified": 1 },
       },
       {
         $facet: {
