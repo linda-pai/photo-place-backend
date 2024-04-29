@@ -1538,6 +1538,32 @@ app.post(
   }
 );
 
+//update first 50 images isFeatured = true , sort by _id
+app.post(`${apiRoot}/images/updateIsFeatured`, async (req, res) => {
+  const { eventId } = req.body;
+  const imageArray = await db
+    .collection(`imagecollection/${eventId}`)
+    .find({})
+    .sort({ _id: 1 })
+    .limit(50)
+    .toArray();
+
+  const imageIds = imageArray.map((item) => item.image.id);
+
+  await db.collection(`imagecollection/${eventId}`).updateMany(
+    {
+      "image.id": { $in: imageIds },
+    },
+    {
+      $set: {
+        isFeatured: true,
+      },
+    }
+  );
+
+  res.send({ status: 200 });
+});
+
 const getDetectedImageLength = async (eventId) => {
   const detectedImageLength = await db
     .collection(`imagecollection/${eventId}`)
