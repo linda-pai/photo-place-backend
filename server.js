@@ -430,8 +430,8 @@ app.get(`${apiRoot}/images/getUploadInfo/:author`, async (req, res) => {
 app.get(
   `${apiRoot}/images/getDetectedImageLength/:eventId/:author`,
   async (req, res) => {
-    const eventId = req.params.eventId;
-    const detectedImageLength = await getDetectedImageLength(eventId);
+    const { eventId, author } = req.params;
+    const detectedImageLength = await getDetectedImageLength(eventId, author);
 
     res.send({ detectedImageLength });
   }
@@ -477,6 +477,7 @@ app.get(`${apiRoot}/images/getByPathAndEventId/:eventId`, async (req, res) => {
                 },
               }),
           "image.author": author ? author : { $ne: "" },
+          "image.watermarkedUrl": { $exists: true },
           //預設只顯示精選圖片，如果有 path(搜尋關鍵字) 就不管是不是精選
           ...(path ? {} : { isFeatured: true }),
           isRemoved: {
