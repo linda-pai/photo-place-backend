@@ -649,12 +649,20 @@ app.get(`${apiRoot}/events`, (req, res) => {
 });
 
 //查詢 event by id
-app.get(`${apiRoot}/events/getBy/:eventId`, (req, res) => {
+app.get(`${apiRoot}/events/getBy/:eventId`, async (req, res) => {
   const eventId = req.params.eventId;
-  db.collection("eventlistcollection")
+
+  const featuredImages = await db
+    .collection(`imagecollection/${eventId}`)
+    .countDocuments({
+      isFeatured: true,
+    });
+
+  await db
+    .collection("eventlistcollection")
     .find({ eventId })
     .toArray((error, result) => {
-      res.send(result[0] || {});
+      res.send({ eventInfo: result[0], featuredImages } || {});
     });
 });
 
