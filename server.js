@@ -1506,14 +1506,17 @@ const detectAndWatermark = async (eventId, imageItem) => {
 };
 
 const detectAndWatermarkQueue = async (eventId, imageArray) => {
-  //one by one wait for the previous one to finish
-  const results = await imageArray.reduce(
-    (promise, item) =>
-      promise.then((result) =>
-        detectAndWatermark(eventId, item).then((res) => [...result, res])
-      ),
-    Promise.resolve([])
-  );
+  //group by ${groupSize} wait for the previous group to finish
+  const groupSize = 10;
+  const results = [];
+  for (let i = 0; i < imageArray.length; i += groupSize) {
+    const group = imageArray.slice(i, i + groupSize);
+    const groupPromises = group.map((imageItem) =>
+      detectAndWatermark(eventId, imageItem)
+    );
+    const groupResults = await Promise.all(groupPromises);
+    results.push(groupResults);
+  }
 
   return results;
 };
