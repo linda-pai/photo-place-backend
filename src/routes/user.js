@@ -1,54 +1,45 @@
+const UUID = require("uuid");
+const dayjs = require("dayjs");
+
 const express = require("express");
 const router = express.Router();
 
-const dotenv = require("dotenv");
-dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
-
-const { withDB } = require("../database/db");
-
-router.get("/users", (req, res) => {
-  withDB(async (db) => {
-    const users = await db.collection("usercollection").find({}).toArray();
-    return res.status(200).json(users);
-  }, res);
+router.get("/userList", async (req, res) => {
+  const db = req.app.db;
+  await db
+    .collection("usercollection")
+    .find({})
+    .project({ token: 1, email: 1, name: 1, role: 1, userId: 1, createTime: 1 })
+    .sort({ createTime: -1 })
+    .toArray((error, result) => {
+      res.send(result);
+    });
 });
 
-// router.post("/createUser", (req, res) => {
-//   withDB(async (db) => {
-//     const user = {
-//       userId: "usr" + UUID.v4().substring(0, 12),
-//       ...req.body,
-//     };
-//     //check if user already exists
-//     const userExist = await db
-//       .collection("usercollection")
-//       .find({ email: user.email })
-//       .toArray();
+router.post("/createUser", async (req, res) => {
+  const db = req.app.db;
+  const userId = req.body.userId || "user-" + UUID.v4().substring(0, 12);
+  const user = {
+    role: "user", //TODO: 預設為 user
+    createTime: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+    ...req.body,
+  };
+  //check if user already exists
+  const userExist = await db
+    .collection("usercollection")
+    .find({ userId: user.userId })
+    .toArray();
 
-//     console.log("userExist", userExist);
-
-//     if (userExist.length > 0) {
-//       const result = await db
-//         .collection("usercollection")
-//         .updateOne({ email: user.email }, { $set: { token: user.token } });
-//       return res.status(200).json(result);
-//     } else {
-//       const result = await db.collection("usercollection").insertOne(user);
-//       return res.status(200).json(result);
-//     }
-//   }, res);
-// });
-
-// router.get("/getUserInfo/:token", (req, res) => {
-//   //TODO: 用 withDB 速度會變慢，待解決
-//   withDB(async (db) => {
-//     const user = await db
-//       .collection("usercollection")
-//       .find({ token: req.params.token })
-//       .project({ token: 1, email: 1, name: 1, role: 1 })
-//       .toArray();
-//     return res.status(200).json(user);
-//   }, res);
-// });
+  if (userExist.length > 0) {
+    db.collection("usercollection").updateOne(
+      { email: user.email },
+      { $set: { token: user.token } }
+    );
+    return res.status(200).json({ userId });
+  } else {
+    db.collection("usercollection").insertOne(user);
+    return res.status(200).json({ userId });
+  }
+});
 
 module.exports = router;

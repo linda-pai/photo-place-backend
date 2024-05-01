@@ -1,6 +1,7 @@
 const AWS = require("aws-sdk");
 const { uploadToS3 } = require("./uploadModules");
-require("dotenv").config();
+const dotenv = require("dotenv");
+dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 AWS.config.update({ region: process.env.AWS_REGION });
 
