@@ -6,7 +6,7 @@ const detectAndWatermark = async (db, eventId, imageItem) => {
   const { id, url, fileName } = imageItem.image;
   const key = decodeURIComponent(
     url?.split(process.env.AWS_BUCKET_URL + "/")[1]
-  );
+  ).replace(/\+/g, " ");
 
   const detectedNumbers = await getDetectedByKey(key);
   const watermarkedImage = await getWatermarkedImageUrl(
