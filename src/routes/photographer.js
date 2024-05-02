@@ -173,13 +173,18 @@ router.get("/getSoldInfoByAuthor/:eventId/:author", async (req, res) => {
 });
 
 //photographer/* 用的，要有 :author 才能查詢
-router.get("/getByAuthor/:eventId/:author/:sortBy", async (req, res) => {
+router.post("/getByAuthor", async (req, res) => {
   const db = req.app.db;
-  const { eventId, author, sortBy } = req.params;
+  const { eventId, author, sortBy, fileName, curPage } = req.body;
   const countsPerPage = 24;
-  const page = req.query.page - 1 || 0;
+  const page = curPage - 1 || 0;
 
   const detectedImageLength = await getDetectedImageLength(db, eventId, author);
+  //handle Unterminated character class
+  const formattedFileName = fileName?.replace(
+    /[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g,
+    "\\$&"
+  );
 
   await db
     .collection(`imagecollection/${eventId}`)
@@ -190,6 +195,11 @@ router.get("/getByAuthor/:eventId/:author/:sortBy", async (req, res) => {
       {
         $match: {
           "image.author": author,
+          ...(fileName && {
+            "image.fileName": {
+              $regex: new RegExp(".*" + formattedFileName + ".*"),
+            },
+          }),
         },
       },
       {
@@ -289,7 +299,7 @@ router.post("/setStatus/:eventId/:imageId/:author", async (req, res) => {
     {
       $set: {
         ...(isFeatured !== undefined && { isFeatured: isFeatured }),
-        ...(isRemoved !== undefined && { isRemoved: isFeatured }),
+        ...(isRemoved !== undefined && { isRemoved: isRemoved }),
       },
     }
   );
