@@ -9,17 +9,16 @@ const detectAndWatermark = async (db, eventId, imageItem) => {
   ).replace(/\+/g, " ");
 
   const detectedNumbers = await getDetectedByKey(key);
-  const watermarkedImage = await getWatermarkedImageUrl(
+  const watermarkedResult = await getWatermarkedImageUrl(
     key,
     "/" + eventId + "/",
     fileName
   );
-
-  Promise.all([detectedNumbers, watermarkedImage]).then(
-    async ([detectedNumbers, watermarkedImage]) => {
+  Promise.all([detectedNumbers, watermarkedResult]).then(
+    async ([detectedNumbers, watermarkedResult]) => {
+      const { watermarkedUrl, orientation } = watermarkedResult;
       const paths = detectedNumbers.length > 0 ? detectedNumbers : [];
       const pathList = paths.map(({ DetectedText }) => DetectedText);
-      const { watermarkedUrl } = watermarkedImage;
 
       await db.collection(`imagecollection/${eventId}`).updateOne(
         {
@@ -29,6 +28,7 @@ const detectAndWatermark = async (db, eventId, imageItem) => {
           $set: {
             "image.watermarkedUrl": watermarkedUrl,
             path: pathList,
+            "image.orientation": orientation,
           },
         }
       );

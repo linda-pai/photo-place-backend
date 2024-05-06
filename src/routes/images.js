@@ -54,6 +54,9 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
               authorName: "$image.authorName",
               author: "$image.author",
               isFeatured: "$isFeatured",
+              orientation: {
+                $ifNull: ["$image.orientation", "vertical"],
+              },
             },
           },
         },
@@ -205,10 +208,10 @@ router.post(
 //update first 50 images isFeatured = true , sort by _id
 router.post("/updateIsFeatured", async (req, res) => {
   const db = req.app.db;
-  const { eventId } = req.body;
+  const { eventId, author } = req.body;
   const imageArray = await db
     .collection(`imagecollection/${eventId}`)
-    .find({})
+    .find({ "image.author": author })
     .sort({ _id: 1 })
     .limit(50)
     .toArray();

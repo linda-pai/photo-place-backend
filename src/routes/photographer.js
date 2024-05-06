@@ -50,7 +50,7 @@ router.get("/getUploadInfo/:author", async (req, res) => {
 });
 
 //get watermarkUrl 不等於空的圖片數量
-router.get("getDetectedImageLength/:eventId/:author", async (req, res) => {
+router.get("/getDetectedImageLength/:eventId/:author", async (req, res) => {
   const db = req.app.db;
   const { eventId, author } = req.params;
 
@@ -227,6 +227,9 @@ router.post("/getByAuthor", async (req, res) => {
               pathCount: "$pathCount",
               isFeatured: "$isFeatured",
               isRemoved: "$isRemoved",
+              orientation: {
+                $ifNull: ["$image.orientation", "vertical"],
+              },
             },
           },
         },
@@ -346,7 +349,6 @@ router.get("/getByStatus/:eventId/:author", async (req, res) => {
               eventName: "$image.eventName",
               eventId: "$image.eventId",
               watermarkedUrl: "$image.watermarkedUrl",
-              // url: "$image.url",
               price: "$image.price",
               lastModified: "$image.lastModified",
               fileName: "$image.fileName",
@@ -354,6 +356,9 @@ router.get("/getByStatus/:eventId/:author", async (req, res) => {
               pathCount: "$pathCount",
               isFeatured: "$isFeatured",
               isRemoved: "$isRemoved",
+              orientation: {
+                $ifNull: ["$image.orientation", "vertical"],
+              },
             },
           },
         },
