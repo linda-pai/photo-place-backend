@@ -92,7 +92,10 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
 router.post("/getByLastModified/:eventId", async (req, res) => {
   const db = req.app.db;
   const eventId = req.params.eventId;
-  const { author, lastModified, lastModifiedEnd } = req.body;
+  const { intervalGroup } = req.body;
+
+  const countsPerPage = 24;
+  const page = req.query.page - 1 || 0;
 
   db.collection(`imagecollection/${eventId}`)
     .aggregate([
@@ -101,14 +104,16 @@ router.post("/getByLastModified/:eventId", async (req, res) => {
       },
       {
         $match: {
-          "image.lastModified": {
-            $gte: lastModified - 5000,
-            $lte: lastModifiedEnd + 5000,
-          },
-          "image.author": author,
-          isRemoved: {
-            $ne: true,
-          },
+          $or: intervalGroup.map((item) => ({
+            "image.lastModified": {
+              $gte: item.start - 5000,
+              $lte: item.end + 5000,
+            },
+            "image.author": item.author,
+            isRemoved: {
+              $ne: true,
+            },
+          })),
         },
       },
       {
@@ -123,6 +128,10 @@ router.post("/getByLastModified/:eventId", async (req, res) => {
               price: "$image.price",
               lastModified: "$image.lastModified",
               authorName: "$image.authorName",
+              author: "$image.author",
+              orientation: {
+                $ifNull: ["$image.orientation", "vertical"],
+              },
             },
           },
         },
@@ -130,11 +139,30 @@ router.post("/getByLastModified/:eventId", async (req, res) => {
       {
         $sort: { "image.lastModified": 1 },
       },
-      { $limit: 50 },
+      {
+        $facet: {
+          paginatedResults: [
+            { $skip: page * countsPerPage },
+            { $limit: countsPerPage },
+          ],
+          totalCount: [
+            {
+              $count: "count",
+            },
+          ],
+        },
+      },
     ])
     .toArray((error, result) => {
-      const images = result.map((item) => item.image).flat();
-      res.send(images);
+      if (!result || result?.length === 0)
+        return res.send({ images: [], totalCount: 0 });
+
+      const images = result?.[0]?.paginatedResults
+        ? result[0]?.paginatedResults.map((item) => item.image).flat()
+        : [];
+
+      const totalCount = result[0]?.totalCount[0]?.count || 0;
+      res.send({ images, totalCount });
     });
 });
 
