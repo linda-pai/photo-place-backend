@@ -270,26 +270,6 @@ router.post("/updateBibs", async (req, res) => {
   res.send({ status: 200 });
 });
 
-//remove image by id
-router.put("/delete/:eventId/:imageId/:author", async (req, res) => {
-  const db = req.app.db;
-  const { eventId, imageId, author } = req.params;
-  const { isRemoved } = req.body;
-  await db.collection(`imagecollection/${eventId}`).updateOne(
-    {
-      "image.id": imageId,
-      "image.author": author,
-    },
-    {
-      $set: {
-        isRemoved: isRemoved,
-      },
-    }
-  );
-
-  res.send({ status: "success" });
-});
-
 //設定 image 為精選或移除
 router.post("/setStatus/:eventId/:imageId/:author", async (req, res) => {
   const db = req.app.db;
