@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const dayjs = require("dayjs");
 
 const { sendOrderSuccessEmail } = require("../modules/order/orderModules");
 
@@ -10,18 +11,6 @@ router.get("/orderList", async (req, res) => {
     .collection("ordercollection")
     .find({})
     .sort({ createAt: -1 })
-    .toArray((error, result) => {
-      res.send(result);
-    });
-});
-
-//查詢訂單 by orderId
-router.get("/:orderId", (req, res) => {
-  const db = req.app.db;
-  const orderId = req.params.orderId;
-
-  db.collection("ordercollection")
-    .find({ id: orderId })
     .toArray((error, result) => {
       res.send(result);
     });
@@ -49,13 +38,15 @@ router.put("/update/:orderId", async (req, res) => {
       {
         $set: {
           ...req.body,
+          ...(req.body.paidAt === null && {
+            paidAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+          }),
         },
       }
     )
     .then(async () => {
-      if (req.body.paidAt) {
-        await sendOrderSuccessEmail(db, req.params.orderId);
-      }
+      await sendOrderSuccessEmail(db, req.params.orderId);
+
       res.json({ message: "更新成功" });
     })
     .catch((error) => {
