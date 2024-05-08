@@ -218,4 +218,16 @@ router.post("/sendAllEmail/:eventId", async (req, res) => {
   });
 });
 
+router.get("/userList", async (req, res) => {
+  const db = req.app.db;
+  await db
+    .collection("usercollection")
+    .find({})
+    .project({ token: 1, email: 1, name: 1, role: 1, userId: 1, createTime: 1 })
+    .sort({ createTime: -1 })
+    .toArray((error, result) => {
+      res.send(result);
+    });
+});
+
 module.exports = router;

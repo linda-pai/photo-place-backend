@@ -4,18 +4,6 @@ const dayjs = require("dayjs");
 const express = require("express");
 const router = express.Router();
 
-router.get("/userList", async (req, res) => {
-  const db = req.app.db;
-  await db
-    .collection("usercollection")
-    .find({})
-    .project({ token: 1, email: 1, name: 1, role: 1, userId: 1, createTime: 1 })
-    .sort({ createTime: -1 })
-    .toArray((error, result) => {
-      res.send(result);
-    });
-});
-
 router.post("/createUser", async (req, res) => {
   const db = req.app.db;
   const userId = req.body.userId || "user-" + UUID.v4().substring(0, 12);

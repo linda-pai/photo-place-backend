@@ -12,7 +12,9 @@ const cmsRouter = require("./src/routes/cms");
 const newebpayRouter = require("./src/routes/newebpay");
 const linepayRouter = require("./src/routes/linepay");
 const orderRouter = require("./src/routes/orders");
-const roleRouter = require("./src/routes/roles");
+// const roleRouter = require("./src/routes/roles");
+const authChecker = require("./src/middleware/authChecker");
+const adminChecker = require("./src/middleware/adminChecker");
 
 const mongoUtil = require("./src/database/mongoUtil");
 const dotenv = require("dotenv");
@@ -48,13 +50,13 @@ app.use(cors(corsOptions));
 app.use(`${apiRoot}/user`, userRouter);
 app.use(`${apiRoot}/images`, imageRouter);
 app.use(`${apiRoot}/upload`, uploadRouter);
-app.use(`${apiRoot}/photographer`, photographerRouter);
 app.use(`${apiRoot}/events`, eventRouter);
-app.use(`${apiRoot}/cms`, cmsRouter);
 app.use(`${apiRoot}/newebpay`, newebpayRouter);
 app.use(`${apiRoot}/linepay`, linepayRouter);
-app.use(`${apiRoot}/orders`, orderRouter);
-app.use(`${apiRoot}/roles`, roleRouter);
+app.use(`${apiRoot}/orders`, adminChecker, orderRouter);
+app.use(`${apiRoot}/cms`, adminChecker, cmsRouter);
+app.use(`${apiRoot}/photographer`, authChecker, photographerRouter);
+// app.use(`${apiRoot}/roles`, authChecker, roleRouter);
 
 var db;
 
