@@ -53,8 +53,8 @@ app.use(`${apiRoot}/upload`, uploadRouter);
 app.use(`${apiRoot}/events`, eventRouter);
 app.use(`${apiRoot}/newebpay`, newebpayRouter);
 app.use(`${apiRoot}/linepay`, linepayRouter);
-app.use(`${apiRoot}/orders`, adminChecker, orderRouter);
 app.use(`${apiRoot}/cms`, adminChecker, cmsRouter);
+app.use(`${apiRoot}/orders`, authChecker, orderRouter);
 app.use(`${apiRoot}/photographer`, authChecker, photographerRouter);
 // app.use(`${apiRoot}/roles`, authChecker, roleRouter);
 

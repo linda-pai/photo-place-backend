@@ -23,33 +23,11 @@ router.get("/getBy/:eventId", async (req, res) => {
   const db = req.app.db;
   const eventId = req.params.eventId;
 
-  const featuredImages = await db
-    .collection(`imagecollection/${eventId}`)
-    .countDocuments({
-      isFeatured: true,
-    });
-
   await db
     .collection("eventlistcollection")
     .find({ eventId })
     .toArray((error, result) => {
-      res.send({ eventInfo: result[0], featuredImages } || {});
-    });
-});
-
-router.get("/checkUploadable/:eventId", (req, res) => {
-  const db = req.app.db;
-  const eventId = req.params.eventId;
-  db.collection("eventlistcollection")
-    .find({
-      date: {
-        $gte: dayjs().subtract(7, "day").format("YYYY-MM-DD"),
-        $lte: dayjs().add(1, "day").format("YYYY-MM-DD"),
-      },
-    })
-    .toArray((error, result) => {
-      const isUploadable = result.some((item) => item.eventId === eventId);
-      res.send({ isUploadable });
+      res.send(result[0] || {});
     });
 });
 

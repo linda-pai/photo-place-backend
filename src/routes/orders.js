@@ -1,20 +1,5 @@
 const express = require("express");
 const router = express.Router();
-const dayjs = require("dayjs");
-
-const { sendOrderSuccessEmail } = require("../modules/order/orderModules");
-
-//訂單列表
-router.get("/orderList", async (req, res) => {
-  const db = req.app.db;
-  await db
-    .collection("ordercollection")
-    .find({})
-    .sort({ createAt: -1 })
-    .toArray((error, result) => {
-      res.send(result);
-    });
-});
 
 //查詢訂單 by orderBy
 router.get("/getByUser/:orderBy", (req, res) => {
@@ -26,44 +11,6 @@ router.get("/getByUser/:orderBy", (req, res) => {
     .sort({ createAt: -1 })
     .toArray((error, result) => {
       res.send(result);
-    });
-});
-
-//付款 - 更新訂單
-router.put("/update/:orderId", async (req, res) => {
-  const db = req.app.db;
-  db.collection("ordercollection")
-    .updateOne(
-      { orderId: req.params.orderId },
-      {
-        $set: {
-          ...req.body,
-          ...(req.body.paidAt === null && {
-            paidAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
-          }),
-        },
-      }
-    )
-    .then(async () => {
-      await sendOrderSuccessEmail(db, req.params.orderId);
-
-      res.json({ message: "更新成功" });
-    })
-    .catch((error) => {
-      console.log("update-error", error);
-      return res.json({ message: "更新失敗" });
-    });
-});
-
-//刪除訂單
-router.post("/delete/:orderId", (req, res) => {
-  const db = req.app.db;
-  db.collection("ordercollection")
-    .deleteOne({ orderId: req.params.orderId })
-    .then(() => res.json({ message: "刪除成功" }))
-    .catch((error) => {
-      console.log("delete-error", error);
-      return res.json({ message: "刪除失敗" });
     });
 });
 
