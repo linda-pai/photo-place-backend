@@ -277,6 +277,17 @@ router.post("/setStatus/:eventId/:imageId/:author", async (req, res) => {
   const isFeatured = req.body?.isFeatured;
   const isRemoved = req.body?.isRemoved;
 
+  //精選照片上限400張
+  if (isFeatured) {
+    const featuredImageLength = await db
+      .collection(`imagecollection/${eventId}`)
+      .countDocuments({ "image.author": author, isFeatured: true });
+
+    if (featuredImageLength >= 400) {
+      return res.send({ status: "fail", message: "精選照片上限400張" });
+    }
+  }
+
   await db.collection(`imagecollection/${eventId}`).updateOne(
     { "image.id": imageId, "image.author": author },
     {
