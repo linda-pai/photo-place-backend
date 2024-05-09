@@ -217,7 +217,29 @@ router.post("/updateWatermarkUrlAndDetectText", async (req, res) => {
     })
     .toArray();
 
-  await detectAndWatermarkQueue(db, eventId, imageArray).then(() => {
+  await detectAndWatermarkQueue(db, eventId, imageArray).then(async () => {
+    //檢查精選照片超過24張
+    const isFeaturedCount = await db
+      .collection(`imagecollection/${eventId}`)
+      .countDocuments({
+        "image.author": author,
+        isFeatured: true,
+      });
+
+    if (isFeaturedCount >= 24) {
+      //update isCompleteUpload
+      db.collection("eventlistcollection").updateOne(
+        {
+          eventId,
+        },
+        {
+          $set: {
+            isCompleteUpload: true,
+          },
+        }
+      );
+    }
+
     res.send({ status: 200 });
   });
 });
