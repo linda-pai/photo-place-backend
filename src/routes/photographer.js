@@ -390,4 +390,26 @@ router.get("/getByStatus/:eventId/:author", async (req, res) => {
     });
 });
 
+//set photographer display name
+router.post("/setDisplayName", async (req, res) => {
+  const db = req.app.db;
+  const { author, displayName } = req.body;
+  await db
+    .collection(`photographercollection`)
+    .updateOne({ author }, { $set: { displayName } });
+  res.send({ message: "更新成功" });
+});
+
+//get photographer display name
+router.get("/getDisplayName/:author", async (req, res) => {
+  const db = req.app.db;
+  const author = req.params.author;
+  const displayName = await db
+    .collection(`photographercollection`)
+    .find({ author })
+    .project({ displayName: 1 })
+    .toArray();
+  res.send(displayName[0]);
+});
+
 module.exports = router;
