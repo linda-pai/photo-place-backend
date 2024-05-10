@@ -9,9 +9,16 @@ const { multerUploader } = require("../modules/uploadModules");
 //查詢 events
 router.get("/eventList", (req, res) => {
   const db = req.app.db;
-  const { sort } = req.query;
+  const { sort, isRecent } = req.query;
   db.collection("eventlistcollection")
-    .find({})
+    .find({
+      ...(isRecent === "true" && {
+        date: {
+          //all past and future 30 days events
+          $lte: dayjs().add(30, "day").format("YYYY-MM-DD"),
+        },
+      }),
+    })
     .sort({ date: sort === "asc" ? 1 : -1 })
     .toArray((error, result) => {
       res.send(result);
