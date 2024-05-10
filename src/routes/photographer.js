@@ -156,7 +156,7 @@ router.get("/getSoldInfoByAuthor/:eventId/:author", async (req, res) => {
   const db = req.app.db;
   const { eventId, author } = req.params;
 
-  const soldInfo = await db
+  await db
     .collection(`uploadInfocollection`)
     .find({ eventId, author })
     .project({
@@ -167,9 +167,19 @@ router.get("/getSoldInfoByAuthor/:eventId/:author", async (req, res) => {
       name: 1,
       date: 1,
     })
-    .toArray();
-
-  res.send(soldInfo[0] || {});
+    .toArray(async (error, result) => {
+      //sorting by soldImage soldAt
+      const soldImages = result[0]?.soldImages || [];
+      if (soldImages.length === 0) {
+        return res.send(result[0] || {});
+      } else {
+        const sortedSoldImages = soldImages.sort((a, b) => {
+          return new Date(b.soldAt) - new Date(a.soldAt);
+        });
+        result[0].soldImages = sortedSoldImages || soldImages;
+        return res.send(result[0] || {});
+      }
+    });
 });
 
 //photographer/* 用的，要有 :author 才能查詢
