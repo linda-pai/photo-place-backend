@@ -1,6 +1,8 @@
 const AWS = require("aws-sdk");
 const multer = require("multer");
 const { sha256 } = require("js-sha256");
+const dotenv = require("dotenv");
+dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 // AWS config
 const awsConfig = {
@@ -51,18 +53,17 @@ const getS3Object = async (key) => {
 };
 
 const deleteS3Object = async (key) => {
-  // console.log(key);
   return new Promise((resolve, reject) => {
     const params = {
       Bucket: process.env.AWS_BUCKET_NAME,
       Key: key,
+      versionId: null,
     };
     s3.deleteObject(params, (error, data) => {
       if (error) {
         console.log("error", error);
         reject(error);
       }
-      // console.log("data", data);
       resolve(data);
     });
   });
