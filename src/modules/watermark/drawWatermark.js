@@ -1,5 +1,5 @@
 const sharp = require("sharp");
-const { uploadToS3, getS3Object } = require("./uploadModules");
+const { uploadToS3, getS3Object } = require("../uploadModules");
 require("dotenv").config();
 
 async function compositeImages(bucketKey) {
@@ -152,6 +152,19 @@ const getWatermarkedImageUrl = async (bucketKey, path, fileName) => {
     try {
       const watermarkedImage = await compositeImages(bucketKey);
 
+      const orientation = await sharp(watermarkedImage)
+        .metadata()
+        .then(async (metadata) => {
+          const { width, height } = metadata;
+          if (width > height) {
+            return "horizontal";
+          } else if (width < height) {
+            return "vertical";
+          } else {
+            return "square";
+          }
+        });
+
       const result = await uploadToS3(
         {
           mimetype: "image/jpg",
@@ -160,7 +173,7 @@ const getWatermarkedImageUrl = async (bucketKey, path, fileName) => {
         },
         path
       );
-      resolve({ watermarkedUrl: result.Location || "" });
+      resolve({ watermarkedUrl: result.Location || "", orientation });
     } catch (error) {
       reject(error);
     }

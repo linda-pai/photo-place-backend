@@ -1,6 +1,7 @@
 const AWS = require("aws-sdk");
 const { uploadToS3 } = require("./uploadModules");
-require("dotenv").config();
+const dotenv = require("dotenv");
+dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 AWS.config.update({ region: process.env.AWS_REGION });
 
@@ -22,10 +23,13 @@ const getDetectedNumbers = async (detectKey) => {
         resolve([]);
       } else {
         // console.log(`Detected Text for: ${fileName}`);
+        const checkTextLengthAndIsNumber = (text, minimun) =>
+          text.length >= minimun && !isNaN(text);
         try {
           let detectedNumbers = [];
           response.TextDetections.map((label) =>
-            label.Confidence > 75 && Number(label.DetectedText)
+            label.Confidence > 75 &&
+            Number(checkTextLengthAndIsNumber(label.DetectedText, 3))
               ? detectedNumbers.push({
                   DetectedText: label.DetectedText,
                   Confidence: label.Confidence,
