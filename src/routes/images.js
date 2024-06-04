@@ -12,6 +12,8 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
   const path = req.query.path || "";
   const author = req.query.author || "";
   const eventId = req.params.eventId;
+  const { lastModified } = req.query;
+  const lastModifiedArray = lastModified?.split(",");
 
   const countsPerPage = 24;
   const page = req.query.page - 1 || 0;
@@ -24,6 +26,14 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
       },
       {
         $match: {
+          "image.lastModified": {
+            $gte: lastModifiedArray?.[0]
+              ? Date.parse(lastModifiedArray?.[0])
+              : 0,
+            $lte: lastModifiedArray?.[1]
+              ? Date.parse(lastModifiedArray?.[1])
+              : Date.now(),
+          },
           ...(path === ""
             ? {}
             : {
