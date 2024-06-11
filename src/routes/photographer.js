@@ -35,12 +35,14 @@ router.get("/getUploadInfo/:author", async (req, res) => {
             featuredLength,
             removeImageLength,
             detectedImageLength,
+            emptyPathImageLength,
           } = await getImageInfoByEventId(db, eventId, author);
 
           item.allImageLength = allImageLength || 0;
           item.featuredLength = featuredLength || 0;
           item.removeImageLength = removeImageLength || 0;
           item.detectedImageLength = detectedImageLength || 0;
+          item.emptyPathImageLength = emptyPathImageLength || 0;
 
           return item;
         })
@@ -185,7 +187,7 @@ router.get("/getSoldInfoByAuthor/:eventId/:author", async (req, res) => {
 //photographer/* 用的，要有 :author 才能查詢
 router.post("/getByAuthor", async (req, res) => {
   const db = req.app.db;
-  const { eventId, author, sortBy, fileName, curPage } = req.body;
+  const { eventId, author, sorting, fileName, curPage, isEmptyPath } = req.body;
   const countsPerPage = 24;
   const page = curPage - 1 || 0;
 
@@ -210,6 +212,7 @@ router.post("/getByAuthor", async (req, res) => {
               $regex: new RegExp(".*" + formattedFileName + ".*"),
             },
           }),
+          ...(isEmptyPath && { path: { $size: 0 } }),
         },
       },
       {
@@ -245,7 +248,7 @@ router.post("/getByAuthor", async (req, res) => {
         },
       },
       {
-        $sort: { [`image.${sortBy}`]: 1 },
+        $sort: { [`image.lastModified`]: sorting === "asc" ? 1 : -1 },
       },
       {
         $facet: {

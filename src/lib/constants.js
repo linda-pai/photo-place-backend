@@ -2,3 +2,14 @@ module.exports = Object.freeze({
   LINE_PAY: 2,
   NEWEB_PAY: 3,
 });
+
+const IMAGE_STATUS = {
+  IDENTIFYED: "3",
+  UNIDENTIFYED: "4",
+  MORE: "5",
+  ALL: "0",
+};
+
+module.exports = Object.freeze({
+  IMAGE_STATUS,
+});

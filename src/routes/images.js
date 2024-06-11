@@ -5,18 +5,38 @@ const { uploadToS3, multerUploader } = require("../modules/uploadModules");
 const {
   detectAndWatermarkQueue,
 } = require("../modules/detectAndWatermarkQueue");
+const { IMAGE_STATUS } = require("../lib/constants");
 
 //查詢圖片 by 號碼布 & event_id
 router.get("/getByPathAndEventId/:eventId", async (req, res) => {
   const db = req.app.db;
+  const eventId = req.params.eventId;
   const path = req.query.path || "";
   const author = req.query.author || "";
-  const eventId = req.params.eventId;
-  const { lastModified } = req.query;
+  const { lastModified, category } = req.query;
   const lastModifiedArray = lastModified?.split(",");
 
   const countsPerPage = 24;
   const page = req.query.page - 1 || 0;
+
+  const matchQuery = () => {
+    switch (category) {
+      case IMAGE_STATUS.UNIDENTIFYED:
+        return { path: { $size: 0 } };
+      case IMAGE_STATUS.IDENTIFYED:
+        return { isFeatured: true };
+      case IMAGE_STATUS.ALL:
+        return path === ""
+          ? {}
+          : {
+              path: {
+                $elemMatch: { $regex: new RegExp(".*" + path + ".*") },
+              },
+            };
+      default:
+        return {};
+    }
+  };
 
   await db
     .collection(`imagecollection/${eventId}`)
@@ -34,17 +54,9 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
               ? Date.parse(lastModifiedArray?.[1])
               : Date.now(),
           },
-          ...(path === ""
-            ? {}
-            : {
-                path: {
-                  $elemMatch: { $regex: new RegExp(".*" + path + ".*") },
-                },
-              }),
+          ...matchQuery(),
           "image.author": author ? author : { $ne: "" },
           "image.watermarkedUrl": { $exists: true },
-          //預設只顯示精選圖片，如果有 path(搜尋關鍵字) 就不管是不是精選
-          ...(path ? {} : { isFeatured: true }),
           isRemoved: {
             $ne: true,
           },
