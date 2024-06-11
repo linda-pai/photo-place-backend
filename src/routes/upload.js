@@ -14,15 +14,6 @@ const {
   completeMultipartUpload,
 } = require("../modules/uploadModules");
 
-//取得上傳圖片的簽名網址
-router.post("/getSignedUploadURL", async (req, res) => {
-  const { signedUrl, key } = await getSignedUploadURL(
-    req.body.fileName,
-    "/" + req.body.eventId + "/"
-  );
-  res.send({ signedUrl, key });
-});
-
 //1. detectText  2. drawWatermark  3. uploadToS3 by bucketKey
 router.post("/addWatermark", async (req, res) => {
   const db = req.app.db;
