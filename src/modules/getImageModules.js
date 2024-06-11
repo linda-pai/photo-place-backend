@@ -26,11 +26,19 @@ const getImageInfoByEventId = async (db, eventId, author) => {
       "image.watermarkedUrl": { $exists: true },
     });
 
+  const emptyPathImageLength = await db
+    .collection(`imagecollection/${eventId}`)
+    .countDocuments({
+      "image.author": author,
+      path: { $size: 0 },
+    });
+
   return {
     allImageLength: allImageLength || 0,
     featuredLength: featuredLength || 0,
     removeImageLength: removeImageLength || 0,
     detectedImageLength: detectedImageLength || 0,
+    emptyPathImageLength: emptyPathImageLength || 0,
   };
 };
 
