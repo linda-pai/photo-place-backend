@@ -1,14 +1,17 @@
-const AWS = require("aws-sdk");
+const {
+  RekognitionClient,
+  DetectTextCommand,
+} = require("@aws-sdk/client-rekognition");
 const { uploadToS3 } = require("./uploadModules");
 const dotenv = require("dotenv");
 dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
-AWS.config.update({ region: process.env.AWS_REGION });
-
-const client = new AWS.Rekognition();
+const client = new RekognitionClient({
+  region: process.env.AWS_REGION,
+});
 
 const getDetectedNumbers = async (detectKey) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const params = {
       Image: {
         S3Object: {
@@ -17,36 +20,35 @@ const getDetectedNumbers = async (detectKey) => {
         },
       },
     };
-    client.detectText(params, function (err, response) {
-      if (err) {
-        console.log(err, err.stack); // handle error if an error occurred
+    const command = new DetectTextCommand(params);
+    const response = await client.send(command);
+
+    if (response.TextDetections) {
+      const checkTextLengthAndIsNumber = (text, minimun) =>
+        text.length >= minimun && !isNaN(text);
+      try {
+        let detectedNumbers = [];
+        response.TextDetections.map((label) =>
+          label.Confidence > 75 &&
+          Number(checkTextLengthAndIsNumber(label.DetectedText, 3))
+            ? detectedNumbers.push({
+                DetectedText: label.DetectedText,
+                Confidence: label.Confidence,
+              })
+            : null
+        );
+        const removeDuplicate = detectedNumbers.filter(
+          (v, i, a) =>
+            a.findIndex((t) => t.DetectedText === v.DetectedText) === i
+        );
+        resolve(removeDuplicate || []);
+      } catch (error) {
+        console.log(error);
         resolve([]);
-      } else {
-        // console.log(`Detected Text for: ${fileName}`);
-        const checkTextLengthAndIsNumber = (text, minimun) =>
-          text.length >= minimun && !isNaN(text);
-        try {
-          let detectedNumbers = [];
-          response.TextDetections.map((label) =>
-            label.Confidence > 75 &&
-            Number(checkTextLengthAndIsNumber(label.DetectedText, 3))
-              ? detectedNumbers.push({
-                  DetectedText: label.DetectedText,
-                  Confidence: label.Confidence,
-                })
-              : null
-          );
-          const removeDuplicate = detectedNumbers.filter(
-            (v, i, a) =>
-              a.findIndex((t) => t.DetectedText === v.DetectedText) === i
-          );
-          resolve(removeDuplicate || []);
-        } catch (error) {
-          console.log(error);
-          resolve([]);
-        }
       }
-    });
+    } else {
+      resolve([]);
+    }
   });
 };
 
@@ -54,12 +56,12 @@ const uploadToS3andDetectText = (file, path) => {
   return new Promise(async (resolve, reject) => {
     try {
       const result = await uploadToS3(file, path);
-      const detectedNumbers = await getDetectedNumbers(result.key);
-
-      resolve({
-        originImageUrl: result.Location,
-        detectedNumbers,
-        fileName: file.originalname || result.key,
+      await getDetectedNumbers(result.key).then((detectedNumbers) => {
+        resolve({
+          originImageUrl: result.Location,
+          detectedNumbers,
+          fileName: file.originalname || result.key,
+        });
       });
     } catch (error) {
       reject(error);
