@@ -240,15 +240,15 @@ router.post("/updateWatermarkUrlAndDetectText", async (req, res) => {
     .toArray();
 
   await detectAndWatermarkQueue(db, eventId, imageArray).then(async () => {
-    //檢查精選照片超過24張
-    const isFeaturedCount = await db
+    //檢查有watermarked照片超過24張
+    const isWatermarkedCount = await db
       .collection(`imagecollection/${eventId}`)
       .countDocuments({
         "image.author": author,
-        isFeatured: true,
+        watermarkedUrl: { $exists: true },
       });
 
-    if (isFeaturedCount >= 24) {
+    if (isWatermarkedCount >= 24) {
       //update isCompleteUpload
       db.collection("eventlistcollection").updateOne(
         {
@@ -276,32 +276,5 @@ router.post(
     uploadToS3(file, path).then((result) => res.json(result));
   }
 );
-
-//update first 50 images isFeatured = true , sort by _id
-router.post("/updateIsFeatured", async (req, res) => {
-  const db = req.app.db;
-  const { eventId, author } = req.body;
-  const imageArray = await db
-    .collection(`imagecollection/${eventId}`)
-    .find({ "image.author": author })
-    .sort({ _id: 1 })
-    .limit(50)
-    .toArray();
-
-  const imageIds = imageArray.map((item) => item.image.id);
-
-  await db.collection(`imagecollection/${eventId}`).updateMany(
-    {
-      "image.id": { $in: imageIds },
-    },
-    {
-      $set: {
-        isFeatured: true,
-      },
-    }
-  );
-
-  res.send({ status: 200 });
-});
 
 module.exports = router;
