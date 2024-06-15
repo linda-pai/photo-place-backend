@@ -7,7 +7,7 @@ const IMAGE_STATUS = {
   IDENTIFYED: "3",
   UNIDENTIFYED: "4",
   MORE: "5",
-  ALL: "0",
+  ALL: "1",
 };
 
 module.exports = Object.freeze({

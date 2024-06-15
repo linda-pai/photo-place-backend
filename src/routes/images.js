@@ -46,14 +46,22 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
       },
       {
         $match: {
-          "image.lastModified": {
-            $gte: lastModifiedArray?.[0]
-              ? Date.parse(lastModifiedArray?.[0])
-              : 0,
-            $lte: lastModifiedArray?.[1]
-              ? Date.parse(lastModifiedArray?.[1])
-              : Date.now(),
-          },
+          //handle image.lastModified 可能部分照片沒有
+          $or: [
+            {
+              "image.lastModified": {
+                $gte: lastModifiedArray?.[0]
+                  ? Date.parse(lastModifiedArray?.[0])
+                  : 0,
+                $lte: lastModifiedArray?.[1]
+                  ? Date.parse(lastModifiedArray?.[1])
+                  : Date.now(),
+              },
+            },
+            {
+              "image.lastModified": { $exists: false },
+            },
+          ],
           ...matchQuery(),
           "image.author": author ? author : { $ne: "" },
           "image.watermarkedUrl": { $exists: true },
@@ -101,11 +109,11 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
       },
     ])
     .toArray((error, result) => {
-      const images = result[0]?.paginatedResults
+      const images = result?.[0]?.paginatedResults
         ? result[0]?.paginatedResults.map((item) => item.image).flat()
         : [];
 
-      const totalCount = result[0]?.totalCount[0]?.count || 0;
+      const totalCount = result?.[0]?.totalCount[0]?.count || 0;
       res.send({ images, totalCount });
     });
 });
