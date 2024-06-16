@@ -1,5 +1,8 @@
 const express = require("express");
 const router = express.Router();
+const dayjs = require("dayjs");
+const utc = require("dayjs/plugin/utc");
+const timezone = require("dayjs/plugin/timezone");
 
 const { uploadToS3, multerUploader } = require("../modules/uploadModules");
 const {
@@ -9,6 +12,9 @@ const { IMAGE_STATUS } = require("../lib/constants");
 
 //查詢圖片 by 號碼布 & event_id
 router.get("/getByPathAndEventId/:eventId", async (req, res) => {
+  dayjs.extend(utc);
+  dayjs.extend(timezone);
+
   const db = req.app.db;
   const eventId = req.params.eventId;
   const path = req.query.path || "";
@@ -51,11 +57,15 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
             {
               "image.lastModified": {
                 $gte: lastModifiedArray?.[0]
-                  ? Date.parse(lastModifiedArray?.[0])
+                  ? dayjs(lastModifiedArray?.[0])
+                      .tz("Asia/Taipei", true)
+                      .valueOf()
                   : 0,
                 $lte: lastModifiedArray?.[1]
-                  ? Date.parse(lastModifiedArray?.[1])
-                  : Date.now(),
+                  ? dayjs(lastModifiedArray?.[1])
+                      .tz("Asia/Taipei", true)
+                      .valueOf()
+                  : dayjs().tz("Asia/Taipei", true).valueOf(),
               },
             },
             {
