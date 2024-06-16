@@ -9,7 +9,7 @@ const {
   updateUploadInfoSellInfo,
   sendOrderSuccessEmail,
 } = require("../modules/order/orderModules");
-const paymentConst = require("../lib/constants");
+const { PAYMENT_METHOD } = require("../lib/constants");
 
 //line pay request
 router.post("/request", async (req, res) => {
@@ -43,7 +43,7 @@ router.post("/request", async (req, res) => {
     totalAmount: amount,
     items,
     orderBy,
-    paymentMethod: paymentConst.LINE_PAY,
+    paymentMethod: PAYMENT_METHOD.LINE_PAY,
   });
 
   const linePayRequest = await linePay(
@@ -76,7 +76,7 @@ router.post("/confirm", async (req, res) => {
         db,
         orderId,
         transactionId,
-        paymentConst.LINE_PAY
+        PAYMENT_METHOD.LINE_PAY
       );
       await updateUploadInfoSellInfo(db, orderId);
 
