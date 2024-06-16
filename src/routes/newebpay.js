@@ -10,7 +10,7 @@ const {
   updateUploadInfoSellInfo,
   sendOrderSuccessEmail,
 } = require("../modules/order/orderModules");
-const paymentConst = require("../lib/constants");
+const { PAYMENT_METHOD } = require("../lib/constants");
 
 router.post("/request", async (req, res) => {
   const db = req.app.db;
@@ -33,7 +33,7 @@ router.post("/request", async (req, res) => {
   createOrder(db, {
     ...data,
     ...encryptOrder,
-    paymentMethod: paymentConst.NEWEB_PAY,
+    paymentMethod: PAYMENT_METHOD.NEWEB_PAY,
   });
 
   res.send({
@@ -74,7 +74,7 @@ router.post("/notify", async (req, res) => {
 
     const orderId = order?.[0]?.orderId;
     if (!orderId) return res.end();
-    await updateOrderPaidAt(db, orderId, TradeNo, paymentConst.NEWEB_PAY);
+    await updateOrderPaidAt(db, orderId, TradeNo, PAYMENT_METHOD.NEWEB_PAY);
     await updateUploadInfoSellInfo(db, orderId);
 
     await sendOrderSuccessEmail(db, orderId);

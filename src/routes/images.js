@@ -1,20 +1,48 @@
 const express = require("express");
 const router = express.Router();
+const dayjs = require("dayjs");
+const utc = require("dayjs/plugin/utc");
+const timezone = require("dayjs/plugin/timezone");
 
 const { uploadToS3, multerUploader } = require("../modules/uploadModules");
 const {
   detectAndWatermarkQueue,
 } = require("../modules/detectAndWatermarkQueue");
+const { IMAGE_STATUS } = require("../lib/constants");
 
 //查詢圖片 by 號碼布 & event_id
 router.get("/getByPathAndEventId/:eventId", async (req, res) => {
+  dayjs.extend(utc);
+  dayjs.extend(timezone);
+
   const db = req.app.db;
+  const eventId = req.params.eventId;
   const path = req.query.path || "";
   const author = req.query.author || "";
-  const eventId = req.params.eventId;
+  const { lastModified, category } = req.query;
+  const lastModifiedArray = lastModified?.split(",");
 
   const countsPerPage = 24;
   const page = req.query.page - 1 || 0;
+
+  const matchQuery = () => {
+    switch (category) {
+      case IMAGE_STATUS.UNIDENTIFYED:
+        return { path: { $size: 0 } };
+      case IMAGE_STATUS.IDENTIFYED:
+        return { isFeatured: true };
+      case IMAGE_STATUS.ALL:
+        return path === ""
+          ? {}
+          : {
+              path: {
+                $elemMatch: { $regex: new RegExp(".*" + path + ".*") },
+              },
+            };
+      default:
+        return {};
+    }
+  };
 
   await db
     .collection(`imagecollection/${eventId}`)
@@ -24,17 +52,29 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
       },
       {
         $match: {
-          ...(path === ""
-            ? {}
-            : {
-                path: {
-                  $elemMatch: { $regex: new RegExp(".*" + path + ".*") },
-                },
-              }),
+          //handle image.lastModified 可能部分照片沒有
+          $or: [
+            {
+              "image.lastModified": {
+                $gte: lastModifiedArray?.[0]
+                  ? dayjs(lastModifiedArray?.[0])
+                      .tz("Asia/Taipei", true)
+                      .valueOf()
+                  : 0,
+                $lte: lastModifiedArray?.[1]
+                  ? dayjs(lastModifiedArray?.[1])
+                      .tz("Asia/Taipei", true)
+                      .valueOf()
+                  : dayjs().tz("Asia/Taipei", true).valueOf(),
+              },
+            },
+            {
+              "image.lastModified": { $exists: false },
+            },
+          ],
+          ...matchQuery(),
           "image.author": author ? author : { $ne: "" },
           "image.watermarkedUrl": { $exists: true },
-          //預設只顯示精選圖片，如果有 path(搜尋關鍵字) 就不管是不是精選
-          ...(path ? {} : { isFeatured: true }),
           isRemoved: {
             $ne: true,
           },
@@ -79,11 +119,11 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
       },
     ])
     .toArray((error, result) => {
-      const images = result[0]?.paginatedResults
+      const images = result?.[0]?.paginatedResults
         ? result[0]?.paginatedResults.map((item) => item.image).flat()
         : [];
 
-      const totalCount = result[0]?.totalCount[0]?.count || 0;
+      const totalCount = result?.[0]?.totalCount[0]?.count || 0;
       res.send({ images, totalCount });
     });
 });
@@ -218,15 +258,15 @@ router.post("/updateWatermarkUrlAndDetectText", async (req, res) => {
     .toArray();
 
   await detectAndWatermarkQueue(db, eventId, imageArray).then(async () => {
-    //檢查精選照片超過24張
-    const isFeaturedCount = await db
+    //檢查有watermarked照片超過24張
+    const isWatermarkedCount = await db
       .collection(`imagecollection/${eventId}`)
       .countDocuments({
         "image.author": author,
-        isFeatured: true,
+        watermarkedUrl: { $exists: true },
       });
 
-    if (isFeaturedCount >= 24) {
+    if (isWatermarkedCount >= 24) {
       //update isCompleteUpload
       db.collection("eventlistcollection").updateOne(
         {
@@ -254,32 +294,5 @@ router.post(
     uploadToS3(file, path).then((result) => res.json(result));
   }
 );
-
-//update first 50 images isFeatured = true , sort by _id
-router.post("/updateIsFeatured", async (req, res) => {
-  const db = req.app.db;
-  const { eventId, author } = req.body;
-  const imageArray = await db
-    .collection(`imagecollection/${eventId}`)
-    .find({ "image.author": author })
-    .sort({ _id: 1 })
-    .limit(50)
-    .toArray();
-
-  const imageIds = imageArray.map((item) => item.image.id);
-
-  await db.collection(`imagecollection/${eventId}`).updateMany(
-    {
-      "image.id": { $in: imageIds },
-    },
-    {
-      $set: {
-        isFeatured: true,
-      },
-    }
-  );
-
-  res.send({ status: 200 });
-});
 
 module.exports = router;

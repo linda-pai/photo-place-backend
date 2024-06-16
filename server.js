@@ -23,106 +23,124 @@ dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 var utc = require("dayjs/plugin/utc");
 dayjs.extend(utc);
 
-const app = Express();
-const PORT = 3001;
-const apiRoot = "/api";
+const cluster = require("cluster");
+const os = require("os");
 
-const bodyParser = require("body-parser");
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
+const numCPUs = os.cpus().length;
 
-const whitelist = [
-  `${process.env.CLIENT_DOMAIN}`,
-  `${process.env.CLIENT_WWW_DOMAIN}`,
-];
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (whitelist.indexOf(origin) !== -1 || !origin) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  oprtionsSuccessStatus: 200,
-};
+if (cluster.isMaster) {
+  console.log(`Master process ${process.pid} is running`);
 
-app.use(cors(corsOptions));
-app.use(`${apiRoot}/user`, userRouter);
-app.use(`${apiRoot}/images`, imageRouter);
-app.use(`${apiRoot}/upload`, uploadRouter);
-app.use(`${apiRoot}/events`, eventRouter);
-app.use(`${apiRoot}/newebpay`, newebpayRouter);
-app.use(`${apiRoot}/linepay`, linepayRouter);
-app.use(`${apiRoot}/cms`, adminChecker, cmsRouter);
-app.use(`${apiRoot}/orders`, authChecker, orderRouter);
-app.use(`${apiRoot}/photographer`, authChecker, photographerRouter);
-// app.use(`${apiRoot}/roles`, authChecker, roleRouter);
+  for (let i = 0; i < numCPUs; i++) {
+    cluster.fork();
+  }
 
-var db;
-
-mongoUtil.connectToServer(function (err, client) {
-  if (err) console.log(err);
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-    db = mongoUtil.getDb();
-    app.db = db;
+  cluster.on("exit", (worker, code, signal) => {
+    console.log(`Worker process ${worker.process.pid} died. Restarting...`);
+    cluster.fork();
   });
-});
+} else {
+  const app = Express();
+  const PORT = 3001;
+  const apiRoot = "/api";
 
-//把 isReleased 的照片更新為 true by eventId，目前沒用到
-// app.put(`${apiRoot}/images/releaseByEventId/:eventId`, (req, res) => {
-//   const eventId = req.params.eventId;
+  const bodyParser = require("body-parser");
+  app.use(bodyParser.urlencoded({ extended: false }));
+  app.use(bodyParser.json());
 
-//   db.collection(`imagecollection/${eventId}`).updateMany(
-//     { isReleased: false },
-//     {
-//       $set: {
-//         isReleased: true,
-//       },
-//     }
-//   );
-//   res.json({ message: "更新成功", status: 200 });
-// });
+  const whitelist = [
+    `${process.env.CLIENT_DOMAIN}`,
+    `${process.env.CLIENT_WWW_DOMAIN}`,
+  ];
+  const corsOptions = {
+    origin: (origin, callback) => {
+      if (whitelist.indexOf(origin) !== -1 || !origin) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    oprtionsSuccessStatus: 200,
+  };
 
-//rename event isReviewd to isReviewed
-// app.put(`${apiRoot}/events/renameIsReviewd`, (req, res) => {
-//   db.collection("eventlistcollection")
-//     .updateMany(
-//       {
-//         "date-time": { $exists: true },
-//       },
-//       {
-//         $rename: {
-//           "date-time": "dateTime",
-//         },
-//       }
-//     )
-//     .then(() => res.json({ message: "更新成功" }))
-//     .catch((error) => {
-//       console.log("update-error", error);
-//       return res.json({ message: "更新失敗" });
-//     });
-// });
+  app.use(cors(corsOptions));
+  app.use(`${apiRoot}/user`, userRouter);
+  app.use(`${apiRoot}/images`, imageRouter);
+  app.use(`${apiRoot}/upload`, uploadRouter);
+  app.use(`${apiRoot}/events`, eventRouter);
+  app.use(`${apiRoot}/newebpay`, newebpayRouter);
+  app.use(`${apiRoot}/linepay`, linepayRouter);
+  app.use(`${apiRoot}/cms`, adminChecker, cmsRouter);
+  app.use(`${apiRoot}/orders`, authChecker, orderRouter);
+  app.use(`${apiRoot}/photographer`, authChecker, photographerRouter);
+  // app.use(`${apiRoot}/roles`, authChecker, roleRouter);
 
-//從json 批次新增 event
-// app.post(`${apiRoot}/events/addMany`, async (req, res) => {
-//   //from json
-//   const events = eventJson;
-//   const eventData = events.map((event) => ({
-//     eventId: "evt-" + UUID.v4().substring(0, 12),
-//     ...event,
-//     isShow: false,
-//     isCompleteUpload: false,
-//     isReviewed: true,
-//   }));
+  var db;
 
-//   //update eventJson
-//   fs.writeFileSync("data.json", JSON.stringify(eventData));
+  mongoUtil.connectToServer(function (err, client) {
+    if (err) console.log(err);
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+      db = mongoUtil.getDb();
+      app.db = db;
+    });
+  });
 
-//   db.collection("eventlistcollection")
-//     .insertMany(eventData)
-//     .then(() => res.json({ message: "新增成功" }))
-//     .catch((error) => {
-//       console.log("add-error", error);
-//     });
-// });
+  //把 isReleased 的照片更新為 true by eventId，目前沒用到
+  // app.put(`${apiRoot}/images/releaseByEventId/:eventId`, (req, res) => {
+  //   const eventId = req.params.eventId;
+
+  //   db.collection(`imagecollection/${eventId}`).updateMany(
+  //     { isReleased: false },
+  //     {
+  //       $set: {
+  //         isReleased: true,
+  //       },
+  //     }
+  //   );
+  //   res.json({ message: "更新成功", status: 200 });
+  // });
+
+  //rename event isReviewd to isReviewed
+  // app.put(`${apiRoot}/events/renameIsReviewd`, (req, res) => {
+  //   db.collection("eventlistcollection")
+  //     .updateMany(
+  //       {
+  //         "date-time": { $exists: true },
+  //       },
+  //       {
+  //         $rename: {
+  //           "date-time": "dateTime",
+  //         },
+  //       }
+  //     )
+  //     .then(() => res.json({ message: "更新成功" }))
+  //     .catch((error) => {
+  //       console.log("update-error", error);
+  //       return res.json({ message: "更新失敗" });
+  //     });
+  // });
+
+  //從json 批次新增 event
+  // app.post(`${apiRoot}/events/addMany`, async (req, res) => {
+  //   //from json
+  //   const events = eventJson;
+  //   const eventData = events.map((event) => ({
+  //     eventId: "evt-" + UUID.v4().substring(0, 12),
+  //     ...event,
+  //     isShow: false,
+  //     isCompleteUpload: false,
+  //     isReviewed: true,
+  //   }));
+
+  //   //update eventJson
+  //   fs.writeFileSync("data.json", JSON.stringify(eventData));
+
+  //   db.collection("eventlistcollection")
+  //     .insertMany(eventData)
+  //     .then(() => res.json({ message: "新增成功" }))
+  //     .catch((error) => {
+  //       console.log("add-error", error);
+  //     });
+  // });
+}

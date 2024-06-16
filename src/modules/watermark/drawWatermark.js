@@ -1,6 +1,7 @@
 const sharp = require("sharp");
 const { uploadToS3, getS3Object } = require("../uploadModules");
-require("dotenv").config();
+const dotenv = require("dotenv");
+dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 async function compositeImages(bucketKey) {
   try {

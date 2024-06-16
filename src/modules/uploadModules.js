@@ -1,22 +1,31 @@
-const AWS = require("aws-sdk");
+const {
+  S3Client,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+} = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+
 const multer = require("multer");
 const { sha256 } = require("js-sha256");
 const dotenv = require("dotenv");
 dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 // AWS config
-const awsConfig = {
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+const s3Configuration = {
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
   region: process.env.AWS_REGION,
-  signatureVersion: "v4",
 };
-
-const s3 = new AWS.S3(awsConfig);
+const client = new S3Client(s3Configuration);
 
 const uploadToS3 = async (file, customPath) => {
   const path = customPath || "/";
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const key =
       `images${process.env.AWS_BUCKET_PREFIX}${path}` +
       sha256(file.originalname + new Date().toString()) +
@@ -28,27 +37,36 @@ const uploadToS3 = async (file, customPath) => {
       Body: file.buffer,
       // ContentType: file.mimetype,
     };
-    s3.upload(params, (error, data) => {
-      if (error) {
-        reject(error);
-      }
-      resolve({ ...data, key });
+    const command = new PutObjectCommand(params);
+    const response = await client.send(command);
+
+    resolve({
+      ...response,
+      key,
+      Location: `${process.env.AWS_BUCKET_URL}/${key}`,
     });
   });
 };
 
 const getS3Object = async (key) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
+    // Create a helper function to convert a ReadableStream to a buffer.
+    const streamToBuffer = (stream) =>
+      new Promise((resolve, reject) => {
+        const chunks = [];
+        stream.on("data", (chunk) => chunks.push(chunk));
+        stream.on("error", reject);
+        stream.on("end", () => resolve(Buffer.concat(chunks)));
+      });
+
     const params = {
       Bucket: process.env.AWS_BUCKET_NAME,
       Key: key,
     };
-    s3.getObject(params, (error, data) => {
-      if (error) {
-        reject(error);
-      }
-      resolve(data);
-    });
+    const command = new GetObjectCommand(params);
+    const response = await client.send(command);
+    const buffer = await streamToBuffer(response.Body);
+    resolve({ ...response, Body: buffer });
   });
 };
 
@@ -59,7 +77,8 @@ const deleteS3Object = async (key) => {
       Key: key,
       versionId: null,
     };
-    s3.deleteObject(params, (error, data) => {
+    // TODO:待確認
+    client.deleteObject(params, (error, data) => {
       if (error) {
         console.log("error", error);
         reject(error);
@@ -83,29 +102,11 @@ const multerUploader = multer({
   },
 });
 
-const getSignedUploadURL = async (fileName, customPath) => {
-  const path = customPath || "/";
-  const key =
-    `images${process.env.AWS_BUCKET_PREFIX}${path}` +
-    sha256(fileName + new Date().toString()) +
-    "-" +
-    fileName;
-
-  let signedUrl = await s3.getSignedUrlPromise("putObject", {
-    Bucket: process.env.AWS_BUCKET_NAME,
-    Key: key,
-    Expires: 120,
-    ContentType: "image/*",
-  });
-
-  return {
-    signedUrl,
-    key,
-  };
-};
-
 const getSignedMultipartUploadURL = async (params) => {
-  let signedUrl = await s3.getSignedUrlPromise("uploadPart", params);
+  const command = new UploadPartCommand(params);
+  const signedUrl = await getSignedUrl(client, command, {
+    expiresIn: 60 * 15,
+  });
 
   return {
     signedUrl,
@@ -125,7 +126,8 @@ const createMultipartUpload = async (path, fileName) => {
     ContentType: "image/*",
   };
 
-  const uploadId = await s3.createMultipartUpload(params).promise();
+  const command = new CreateMultipartUploadCommand(params);
+  const uploadId = await client.send(command);
   return {
     uploadId: uploadId.UploadId,
     key: uploadId.Key,
@@ -133,7 +135,8 @@ const createMultipartUpload = async (path, fileName) => {
 };
 
 const completeMultipartUpload = async (params) => {
-  return await s3.completeMultipartUpload(params).promise();
+  const command = new CompleteMultipartUploadCommand(params);
+  return await client.send(command);
 };
 
 module.exports = {
@@ -141,7 +144,6 @@ module.exports = {
   getS3Object,
   deleteS3Object,
   multerUploader,
-  getSignedUploadURL,
   getSignedMultipartUploadURL,
   createMultipartUpload,
   completeMultipartUpload,
