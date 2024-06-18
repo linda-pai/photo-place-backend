@@ -258,27 +258,17 @@ router.post("/updateWatermarkUrlAndDetectText", async (req, res) => {
     .toArray();
 
   await detectAndWatermarkQueue(db, eventId, imageArray).then(async () => {
-    //檢查有watermarked照片超過24張
-    const isWatermarkedCount = await db
-      .collection(`imagecollection/${eventId}`)
-      .countDocuments({
-        "image.author": author,
-        watermarkedUrl: { $exists: true },
-      });
-
-    if (isWatermarkedCount >= 24) {
-      //update isCompleteUpload
-      db.collection("eventlistcollection").updateOne(
-        {
-          eventId,
+    //update isCompleteUpload
+    db.collection("eventlistcollection").updateOne(
+      {
+        eventId,
+      },
+      {
+        $set: {
+          isCompleteUpload: true,
         },
-        {
-          $set: {
-            isCompleteUpload: true,
-          },
-        }
-      );
-    }
+      }
+    );
 
     res.send({ status: 200 });
   });
