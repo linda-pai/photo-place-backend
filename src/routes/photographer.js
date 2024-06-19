@@ -187,7 +187,15 @@ router.get("/getSoldInfoByAuthor/:eventId/:author", async (req, res) => {
 //photographer/* 用的，要有 :author 才能查詢
 router.post("/getByAuthor", async (req, res) => {
   const db = req.app.db;
-  const { eventId, author, sorting, fileName, curPage, isEmptyPath } = req.body;
+  const {
+    eventId,
+    author,
+    lastModifiedSorting,
+    detectLengthSorting,
+    fileName,
+    curPage,
+    isEmptyPath,
+  } = req.body;
   const countsPerPage = 24;
   const page = curPage - 1 || 0;
 
@@ -248,7 +256,15 @@ router.post("/getByAuthor", async (req, res) => {
         },
       },
       {
-        $sort: { [`image.lastModified`]: sorting === "asc" ? 1 : -1 },
+        //sorting by image pathCount and lastModified
+        $sort: {
+          ...(detectLengthSorting && {
+            "image.pathCount": detectLengthSorting === "asc" ? 1 : -1,
+          }),
+          ...(lastModifiedSorting && {
+            "image.lastModified": lastModifiedSorting === "asc" ? 1 : -1,
+          }),
+        },
       },
       {
         $facet: {
