@@ -22,21 +22,26 @@ const getDetectedNumbers = async (detectKey) => {
     };
     const command = new DetectTextCommand(params);
     const response = await client.send(command);
-
     if (response.TextDetections) {
+      //因為接力會有英文字開頭 ex: A1173
+      const removeFirstCharacter = (text) => text.slice(1);
       const checkTextLengthAndIsNumber = (text, minimun) =>
-        text.length >= minimun && !isNaN(text);
+        text.length >= minimun && !isNaN(removeFirstCharacter(text));
+      //因為接力會有空格或- ex:117 3, 117-3
+      const removeSpaceOrDash = (text) => text.replace(/[\s-]/g, "");
+
       try {
         let detectedNumbers = [];
-        response.TextDetections.map((label) =>
-          label.Confidence > 75 &&
-          Number(checkTextLengthAndIsNumber(label.DetectedText, 3))
+        response.TextDetections.map((label) => {
+          const plainText = removeSpaceOrDash(label.DetectedText);
+          return label.Confidence > 75 &&
+            Number(checkTextLengthAndIsNumber(plainText, 3))
             ? detectedNumbers.push({
-                DetectedText: label.DetectedText,
+                DetectedText: plainText,
                 Confidence: label.Confidence,
               })
-            : null
-        );
+            : null;
+        });
         const removeDuplicate = detectedNumbers.filter(
           (v, i, a) =>
             a.findIndex((t) => t.DetectedText === v.DetectedText) === i
