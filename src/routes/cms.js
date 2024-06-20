@@ -1,4 +1,3 @@
-const UUID = require("uuid");
 const dayjs = require("dayjs");
 const express = require("express");
 const router = express.Router();
@@ -57,35 +56,40 @@ const ImagesUploadEmailNotify = async (email, eventName, notifyUrl) => {
 };
 //get all uploadInfo
 router.get("/getUploadInfo", async (req, res) => {
-  const db = req.app.db;
-  await db
-    .collection(`uploadInfocollection`)
-    .find({})
-    .toArray((error, result) => {
-      //group by same eventId
-      const uploadInfo = result.reduce((acc, item) => {
-        const eventId = item.eventId;
-        if (!acc[eventId]) {
-          acc[eventId] = {
-            eventId,
-            eventName: item.eventName,
-            photographers: [],
-          };
-        }
-        acc[eventId].photographers.push({
-          author: item.author,
-          authorName: item.name,
-          createAt: item.createAt,
-          lastEditTime: item.lastEditTime,
-          soldCount: item.soldCount,
-          soldImages: item.soldImages,
-        });
+  const author = req.headers.authorization.split(" ")[1];
+  if (author === process.env.ADMIN_PP_ID || author === process.env.ADMIN_ID) {
+    const db = req.app.db;
+    await db
+      .collection(`uploadInfocollection`)
+      .find({})
+      .toArray((error, result) => {
+        //group by same eventId
+        const uploadInfo = result.reduce((acc, item) => {
+          const eventId = item.eventId;
+          if (!acc[eventId]) {
+            acc[eventId] = {
+              eventId,
+              eventName: item.eventName,
+              photographers: [],
+            };
+          }
+          acc[eventId].photographers.push({
+            author: item.author,
+            authorName: item.name,
+            createAt: item.createAt,
+            lastEditTime: item.lastEditTime,
+            soldCount: item.soldCount,
+            soldImages: item.soldImages,
+          });
 
-        return acc;
-      }, {});
+          return acc;
+        }, {});
 
-      res.send(Object.values(uploadInfo));
-    });
+        res.send(Object.values(uploadInfo));
+      });
+  } else {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 });
 
 router.post("/getImageInfoByEventId/:eventId", async (req, res) => {
@@ -110,14 +114,19 @@ router.post("/getImageInfoByEventId/:eventId", async (req, res) => {
 
 //取得 uploadInfo by eventId
 router.get("/getUploadInfo/:eventId", async (req, res) => {
-  const db = req.app.db;
-  const eventId = req.params.eventId;
-  const uploadInfo = await db
-    .collection(`uploadInfocollection`)
-    .find({ eventId })
-    .toArray();
+  const author = req.headers.authorization.split(" ")[1];
+  if (author === process.env.ADMIN_PP_ID || author === process.env.ADMIN_ID) {
+    const db = req.app.db;
+    const eventId = req.params.eventId;
+    const uploadInfo = await db
+      .collection(`uploadInfocollection`)
+      .find({ eventId })
+      .toArray();
 
-  res.send(uploadInfo);
+    res.send(uploadInfo);
+  } else {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 });
 
 //取得活動上傳完成通知資訊

@@ -2,9 +2,9 @@ const express = require("express");
 const router = express.Router();
 
 //查詢訂單 by orderBy
-router.get("/getByUser/:orderBy", (req, res) => {
+router.post("/getByUser", (req, res) => {
   const db = req.app.db;
-  const orderBy = req.params.orderBy;
+  const orderBy = req.headers.authorization.split(" ")[1];
 
   db.collection("ordercollection")
     .find({ orderBy })
@@ -15,52 +15,50 @@ router.get("/getByUser/:orderBy", (req, res) => {
 });
 
 //確認已付款 - 查詢圖片 by eventId & imageIds
-router.get(
-  "/getByEventIdAndImageIds/:orderId/:eventId/:imageIds",
-  async (req, res) => {
-    const db = req.app.db;
-    const order = await db
-      .collection("ordercollection")
-      .find({ orderId: req.params.orderId })
-      .toArray();
-    const paidAt = order[0]?.paidAt;
+router.post("/getByEventIdAndImageIds", async (req, res) => {
+  const orderBy = req.headers.authorization.split(" ")[1];
 
-    if (paidAt) {
-      const eventId = req.params.eventId;
-      const imageIds = req.params.imageIds;
+  const { orderId, eventId, imageIdList } = req.body;
 
-      db.collection(`imagecollection/${eventId}`)
-        .aggregate([
-          {
-            $unwind: "$image",
+  const db = req.app.db;
+  const order = await db
+    .collection("ordercollection")
+    .find({ orderId, orderBy })
+    .toArray();
+  const paidAt = order[0]?.paidAt;
+
+  if (paidAt) {
+    db.collection(`imagecollection/${eventId}`)
+      .aggregate([
+        {
+          $unwind: "$image",
+        },
+        {
+          $match: {
+            "image.id": { $in: imageIdList },
           },
-          {
-            $match: {
-              "image.id": { $in: imageIds.split(",") },
-            },
-          },
-          {
-            $group: {
-              _id: "$_id",
-              image: {
-                $push: {
-                  fileName: "$image.fileName",
-                  url: "$image.url",
-                  id: "$image.id",
-                  eventName: "$image.eventName",
-                },
+        },
+        {
+          $group: {
+            _id: "$_id",
+            image: {
+              $push: {
+                fileName: "$image.fileName",
+                url: "$image.url",
+                id: "$image.id",
+                eventName: "$image.eventName",
               },
             },
           },
-        ])
-        .toArray((error, result) => {
-          const images = result.map((item) => item.image).flat();
-          res.send(images);
-        });
-    } else {
-      res.status(403).json({ error: "尚未付款" });
-    }
+        },
+      ])
+      .toArray((error, result) => {
+        const images = result.map((item) => item.image).flat();
+        res.send(images);
+      });
+  } else {
+    res.status(403).json({ error: "尚未付款" });
   }
-);
+});
 
 module.exports = router;

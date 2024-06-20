@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const dotenv = require("dotenv");
+dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 const {
   getWatermarkedFeaturedImageUrl,
@@ -17,9 +19,9 @@ const getDetectedImageLength = async (db, eventId, author) => {
 };
 
 //查詢上傳資訊 by author
-router.get("/getUploadInfo/:author", async (req, res) => {
+router.post("/getUploadInfo", async (req, res) => {
   const db = req.app.db;
-  const author = req.params.author;
+  const author = req.headers.authorization.split(" ")[1];
 
   await db
     .collection(`uploadInfocollection`)
@@ -154,9 +156,11 @@ router.get("/getFeaturedWatermarkImages/:eventId/:author", async (req, res) => {
     });
 });
 
-router.get("/getSoldInfoByAuthor/:eventId/:author", async (req, res) => {
+router.post("/getSoldInfoByAuthor/:eventId", async (req, res) => {
   const db = req.app.db;
-  const { eventId, author } = req.params;
+  const { eventId } = req.params;
+
+  const author = req.headers.authorization.split(" ")[1];
 
   await db
     .collection(`uploadInfocollection`)
@@ -189,13 +193,19 @@ router.post("/getByAuthor", async (req, res) => {
   const db = req.app.db;
   const {
     eventId,
-    author,
+    authorQuery,
     lastModifiedSorting,
     detectLengthSorting,
     fileName,
     curPage,
     isEmptyPath,
   } = req.body;
+
+  const author =
+    req.headers.authorization.split(" ")[1] === process.env.ADMIN_PP_ID
+      ? authorQuery
+      : req.headers.authorization.split(" ")[1];
+
   const countsPerPage = 24;
   const page = curPage - 1 || 0;
 
