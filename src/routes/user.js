@@ -5,6 +5,7 @@ const express = require("express");
 const router = express.Router();
 
 const emailSender = require("../modules/emailSender");
+const { REPORT_TYPE_TRANS } = require("../lib/constants");
 
 router.post("/createUser", async (req, res) => {
   const db = req.app.db;
@@ -87,10 +88,13 @@ router.post("/reportImage", async (req, res) => {
       <h1>圖片檢舉通知</h1>
       <p>圖片已被檢舉，請至後台查看</p>
       <p>檢舉ID：${reportInfo.reportId}</p>
-      <p>檢舉人：${reportInfo.reporter}</p>
-      <p>檢舉原因：${reportInfo.reportType}</p>
-      <p>檢舉圖片：${reportInfo.imageId}</p>
-      <p>檢舉圖片活動：${reportInfo.eventId}</p>
+      <p>檢舉人：${reportInfo.reporterId}</p>
+      <p>檢舉原因：${REPORT_TYPE_TRANS[reportInfo.reportType]}</p>
+      <p>檢舉圖片ID：${reportInfo.imageId}</p>
+      <p>檢舉圖片URL：${reportInfo.watermarkedUrl}</p>
+      <p>檢舉圖片活動ID：${reportInfo.eventId}</p>
+      <p>檢舉圖片活動：${reportInfo.eventName}</p>
+
     `,
   });
 
