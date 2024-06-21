@@ -102,6 +102,7 @@ router.post("/getImageInfoByEventId/:eventId", async (req, res) => {
     featuredLength,
     removeImageLength,
     detectedImageLength,
+    emptyPathImageLength,
   } = await getImageInfoByEventId(db, eventId, author);
 
   res.send({
@@ -109,6 +110,7 @@ router.post("/getImageInfoByEventId/:eventId", async (req, res) => {
     featuredLength,
     removeImageLength,
     detectedImageLength,
+    emptyPathImageLength,
   });
 });
 

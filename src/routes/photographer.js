@@ -7,6 +7,7 @@ const {
   getWatermarkedFeaturedImageUrl,
 } = require("../modules/watermark/drawWatermark");
 const { getImageInfoByEventId } = require("../modules/getImageModules");
+const { REMOVE_IMAGE_STATUS } = require("../lib/constants");
 
 const getDetectedImageLength = async (db, eventId, author) => {
   const detectedImageLength = await db
@@ -38,6 +39,7 @@ router.post("/getUploadInfo", async (req, res) => {
             removeImageLength,
             detectedImageLength,
             emptyPathImageLength,
+            reportedImageLength,
           } = await getImageInfoByEventId(db, eventId, author);
 
           item.allImageLength = allImageLength || 0;
@@ -45,6 +47,7 @@ router.post("/getUploadInfo", async (req, res) => {
           item.removeImageLength = removeImageLength || 0;
           item.detectedImageLength = detectedImageLength || 0;
           item.emptyPathImageLength = emptyPathImageLength || 0;
+          item.reportedImageLength = reportedImageLength || 0;
 
           return item;
         })
@@ -344,8 +347,9 @@ router.get("/getByStatus/:eventId/:author", async (req, res) => {
   const db = req.app.db;
   const { eventId, author } = req.params;
   const status = req.query.status;
-  const isFeatured = status === "featured";
-  const isRemoved = status === "removed";
+  const isFeatured = status === REMOVE_IMAGE_STATUS.FEATURED;
+  const isRemoved = status === REMOVE_IMAGE_STATUS.REMOVE;
+  const isReported = status === REMOVE_IMAGE_STATUS.REPORTED;
 
   const page = req.query.page - 1 || 0;
   const countsPerPage = 24;
@@ -361,6 +365,7 @@ router.get("/getByStatus/:eventId/:author", async (req, res) => {
           "image.author": author,
           ...(isFeatured && { isFeatured: true }),
           ...(isRemoved && { isRemoved: true }),
+          ...(isReported && { isReported: true }),
         },
       },
       {
@@ -368,6 +373,7 @@ router.get("/getByStatus/:eventId/:author", async (req, res) => {
           image: 1,
           ...(isFeatured && { isFeatured: 1 }),
           ...(isRemoved && { isRemoved: 1 }),
+          ...(isReported && { isReported: 1, isRemoved: 1 }),
         },
       },
       {
@@ -386,6 +392,7 @@ router.get("/getByStatus/:eventId/:author", async (req, res) => {
               pathCount: "$pathCount",
               isFeatured: "$isFeatured",
               isRemoved: "$isRemoved",
+              isReported: "$isReported",
               orientation: {
                 $ifNull: ["$image.orientation", "vertical"],
               },
