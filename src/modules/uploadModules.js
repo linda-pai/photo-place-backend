@@ -5,6 +5,7 @@ const {
   CompleteMultipartUploadCommand,
   GetObjectCommand,
   PutObjectCommand,
+  DeleteObjectCommand,
 } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
@@ -71,20 +72,14 @@ const getS3Object = async (key) => {
 };
 
 const deleteS3Object = async (key) => {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const params = {
       Bucket: process.env.AWS_BUCKET_NAME,
       Key: key,
-      versionId: null,
     };
-    // TODO:待確認
-    client.deleteObject(params, (error, data) => {
-      if (error) {
-        console.log("error", error);
-        reject(error);
-      }
-      resolve(data);
-    });
+    const command = new DeleteObjectCommand(params);
+    const response = await client.send(command);
+    resolve({ ...response, key });
   });
 };
 

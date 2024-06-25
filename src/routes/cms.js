@@ -6,6 +6,7 @@ const { sendOrderSuccessEmail } = require("../modules/order/orderModules");
 
 const emailSender = require("../modules/emailSender");
 const { getImageInfoByEventId } = require("../modules/getImageModules");
+const { deleteS3Object } = require("../modules/uploadModules");
 
 const dotenv = require("dotenv");
 dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
@@ -269,6 +270,56 @@ router.post("/deleteOrder/:orderId", (req, res) => {
       console.log("delete-error", error);
       return res.json({ message: "刪除失敗" });
     });
+});
+
+router.post("/deleteImages", async (req, res) => {
+  const db = req.app.db;
+  const { eventId } = req.body;
+
+  const image = await db
+    .collection(`imagecollection/${eventId}`)
+    .find({
+      isFeatured: { $ne: true },
+      isSold: { $ne: true },
+    })
+    .toArray();
+
+  if (image.length === 0) {
+    return res.json({ message: "圖片不存在" });
+  } else {
+    const watermarkedKeys = image.map((item) =>
+      decodeURIComponent(
+        item.image.watermarkedUrl.split(process.env.AWS_BUCKET_URL + "/")[1]
+      )
+    );
+
+    const keys = image.map((item) =>
+      decodeURIComponent(
+        item.image.url.split(process.env.AWS_BUCKET_URL + "/")[1]
+      )
+    );
+
+    const deleteFromS3 = async () => {
+      const deleteS3Promise = keys.map(
+        async (key) => await deleteS3Object(key)
+      );
+
+      const deleteWatermarkedS3Promise = watermarkedKeys.map(
+        async (key) => await deleteS3Object(key)
+      );
+
+      await Promise.all([...deleteS3Promise, ...deleteWatermarkedS3Promise]);
+    };
+    //if delete from s3 success, then delete from db
+    await deleteFromS3();
+    //delete from db
+    await db.collection(`imagecollection/${eventId}`).deleteMany({
+      isFeatured: { $ne: true },
+      isSold: { $ne: true },
+    });
+  }
+
+  res.json({ message: "刪除成功" });
 });
 
 module.exports = router;
