@@ -21,8 +21,8 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
   const author = req.query.author || "";
   const { lastModified, category } = req.query;
   const lastModifiedArray = lastModified?.split(",");
+  const countsPerPage = 12;
 
-  const countsPerPage = 24;
   const page = req.query.page - 1 || 0;
 
   const matchQuery = () => {
@@ -86,14 +86,11 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
           image: {
             $push: {
               id: "$image.id",
-              eventName: "$image.eventName",
-              eventId: "$image.eventId",
               watermarkedUrl: "$image.watermarkedUrl",
               price: "$image.price",
               lastModified: "$image.lastModified",
               authorName: "$image.authorName",
               author: "$image.author",
-              isFeatured: "$isFeatured",
               orientation: {
                 $ifNull: ["$image.orientation", "vertical"],
               },
@@ -134,7 +131,7 @@ router.post("/getByLastModified/:eventId", async (req, res) => {
   const eventId = req.params.eventId;
   const { intervalGroup } = req.body;
 
-  const countsPerPage = 24;
+  const countsPerPage = 12;
   const page = req.query.page - 1 || 0;
 
   db.collection(`imagecollection/${eventId}`)
@@ -162,8 +159,6 @@ router.post("/getByLastModified/:eventId", async (req, res) => {
           image: {
             $push: {
               id: "$image.id",
-              eventName: "$image.eventName",
-              eventId: "$image.eventId",
               watermarkedUrl: "$image.watermarkedUrl",
               price: "$image.price",
               lastModified: "$image.lastModified",
