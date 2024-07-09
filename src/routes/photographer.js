@@ -69,6 +69,7 @@ router.get("/getDetectedImageLength/:eventId/:author", async (req, res) => {
 //取得攝影師常用浮水印
 router.get("/getWatermark/:author", async (req, res) => {
   const author = req.params.author;
+  const db = req.app.db;
   const watermark = await db
     .collection(`photographercollection`)
     .find({ author })
@@ -77,7 +78,7 @@ router.get("/getWatermark/:author", async (req, res) => {
 });
 
 //紀錄攝影師常用浮水印
-router.post("/watermark", async (req, res) => {
+router.post("/uploadWatermark", async (req, res) => {
   //watermarkImg 寫入 author
   const db = req.app.db;
   const { watermarkImg, author } = req.body;
@@ -89,23 +90,35 @@ router.post("/watermark", async (req, res) => {
 });
 
 //精選照片添加浮水印
-router.post("/addFeaturedImageWatermark", async (req, res) => {
+router.post("/generateWatermark", async (req, res) => {
   const db = req.app.db;
-  const { images, watermarkImg, position } = req.body;
+  const { images, eventId, watermarkImg, position, opacity } = req.body;
 
   const promises = images.map(async (image) => {
+    const imageInfo = await db
+      .collection(`imagecollection/${eventId}`)
+      .find({ "image.watermarkedUrl": image })
+      .project({ "image.url": 1, "image.orientation": 1, "image.fileName": 1 })
+      .toArray();
+
+    const { url, fileName, orientation } = imageInfo[0].image;
+
     const { watermarkedUrl } = await getWatermarkedFeaturedImageUrl({
-      bucketKey: image.url.split(process.env.AWS_BUCKET_URL + "/")[1],
+      bucketKey: decodeURIComponent(
+        url.split(process.env.AWS_BUCKET_URL + "/")[1]
+      ),
       watermarkedImageUrl: watermarkImg.split(
         process.env.AWS_BUCKET_URL + "/"
       )[1],
-      position: position,
-      path: "/" + image.eventId + "/featured-watermark/",
-      fileName: image.fileName,
+      position,
+      fileName,
+      orientation,
+      opacity,
+      path: "/" + eventId + "/featured-watermark/",
     });
 
-    await db.collection(`imagecollection/${image.eventId}`).updateOne(
-      { "image.id": image.id },
+    await db.collection(`imagecollection/${eventId}`).updateOne(
+      { "image.watermarkedUrl": image },
       {
         $set: {
           "image.featuredWatermarkedUrl": watermarkedUrl,
@@ -125,9 +138,10 @@ router.post("/addFeaturedImageWatermark", async (req, res) => {
 });
 
 //精選照片取得添加浮水印的網址
-router.get("/getFeaturedWatermarkImages/:eventId/:author", async (req, res) => {
+router.post("/getFeaturedWatermarkImages", async (req, res) => {
   const db = req.app.db;
-  const { author, eventId } = req.params;
+  const author = req.headers.authorization.split(" ")[1];
+  const { eventId, imageList } = req.body;
   db.collection(`imagecollection/${eventId}`)
     .aggregate([
       {
@@ -138,6 +152,7 @@ router.get("/getFeaturedWatermarkImages/:eventId/:author", async (req, res) => {
           "image.author": author,
           isFeatured: true,
           "image.featuredWatermarkedUrl": { $exists: true },
+          "image.watermarkedUrl": { $in: imageList },
         },
       },
     ])
@@ -156,6 +171,20 @@ router.get("/getFeaturedWatermarkImages/:eventId/:author", async (req, res) => {
         })
         .flat();
       res.send(images);
+    });
+});
+
+//刪除精選照片浮水印
+router.post("/deleteWatermark", async (req, res) => {
+  const db = req.app.db;
+  const { watermark } = req.body;
+  const author = req.headers.authorization.split(" ")[1];
+
+  await db
+    .collection(`photographercollection`)
+    .deleteOne({ watermarkImg: watermark, author })
+    .then(() => {
+      res.json({ message: "刪除成功" });
     });
 });
 
