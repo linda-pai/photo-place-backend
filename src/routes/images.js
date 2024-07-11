@@ -228,6 +228,9 @@ router.get("/getByIds/:eventId/:ids", (req, res) => {
               price: "$image.price",
               eventName: "$image.eventName",
               key: "$image.id",
+              orientation: {
+                $ifNull: ["$image.orientation", "vertical"],
+              },
             },
           },
         },
