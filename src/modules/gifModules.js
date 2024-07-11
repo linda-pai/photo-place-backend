@@ -1,4 +1,3 @@
-const { createCanvas, loadImage } = require("canvas");
 const GifEncoder = require("gifencoder");
 const sharp = require("sharp");
 const { uploadToS3, getS3Object } = require("./uploadModules");
@@ -8,8 +7,7 @@ async function generateGif(imageList, fileName) {
   const width = orientation === "vertical" ? 1200 : 1800;
   const height = orientation === "vertical" ? 1800 : 1200;
   const encoder = new GifEncoder(width, height);
-  const canvas = createCanvas(width, height);
-  const ctx = canvas.getContext("2d");
+
   //write gif
   encoder.start();
   encoder.setRepeat(0);
@@ -17,28 +15,38 @@ async function generateGif(imageList, fileName) {
   encoder.setQuality(1);
 
   //read images from s3 url
-  await Promise.all(
-    imageList.map(async (item, key) => {
-      //按照key順序
-      const imageKey = decodeURIComponent(
-        item.url.split(process.env.AWS_BUCKET_URL + "/")[1]
-      );
-      const buffer = await getS3Object(imageKey);
-      const resizedBuffer = await sharp(buffer.Body)
+  for (const item of imageList) {
+    const imageKey = decodeURIComponent(
+      item.url.split(process.env.AWS_BUCKET_URL + "/")[1]
+    );
+    const buffer = await getS3Object(imageKey);
+
+    try {
+      const { data } = await sharp(buffer.Body)
         .rotate()
         .resize({
           width,
-          fit: "inside",
-          withoutEnlargement: true,
+          height,
+          fit: "contain",
+          background: { r: 255, g: 255, b: 255, alpha: 0 }, // 设置背景色为透明
         })
-        .toBuffer();
-      const image = await loadImage(resizedBuffer);
+        .ensureAlpha() // 确保有 alpha 通道
+        .raw()
+        .toBuffer({ resolveWithObject: true });
 
-      // 居中绘制图像
-      ctx.drawImage(image, 0, 0, width, height);
-      encoder.addFrame(ctx);
-    })
-  );
+      const rgbaData = new Uint8Array(width * height * 4);
+      for (let i = 0; i < data.length; i += 4) {
+        rgbaData[i] = data[i]; // Red
+        rgbaData[i + 1] = data[i + 1]; // Green
+        rgbaData[i + 2] = data[i + 2]; // Blue
+        rgbaData[i + 3] = data[i + 3]; // Alpha
+      }
+
+      encoder.addFrame(rgbaData);
+    } catch (err) {
+      console.error("Error processing image:", err);
+    }
+  }
 
   encoder.finish();
   const buffer = encoder.out.getData();
