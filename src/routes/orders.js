@@ -115,7 +115,7 @@ router.post("/eventListByUserOrder", async (req, res) => {
   const orderBy = req.headers.authorization.split(" ")[1];
   await db
     .collection("ordercollection")
-    .find({ orderBy, paidAt: { $exists: true } })
+    .find({ orderBy, paidAt: { $exists: true, $ne: null } })
     .toArray((error, result) => {
       const images = result.map((item) =>
         item.items.map((image) => {
