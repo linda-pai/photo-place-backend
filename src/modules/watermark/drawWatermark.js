@@ -11,7 +11,7 @@ async function compositeImages(bucketKey) {
         .rotate()
         .resize({
           width: 1500,
-          withoutEnlargement: true,
+          withoutEnlargement: true, //如果原始圖片小於目標尺寸，則不放大
           fit: "outside",
         })
         .jpeg({ quality: 75 }) //壓縮
@@ -69,10 +69,15 @@ async function compositeFeaturedImages(
           }
         });
 
-      const width = 1500;
-      const resizeRatio = width / imageSize.width;
+      const height = 2250;
+      const resizeRatio = height / imageSize.height;
 
       const watermarkedWithOpacity = await sharp(watermarkedBuffer)
+        .resize({
+          //height 佔照片height 1/10
+          height: Math.round(height * 0.1),
+          fit: "outside",
+        })
         .toFormat("png")
         .composite([
           {
@@ -88,15 +93,23 @@ async function compositeFeaturedImages(
         ])
         .toBuffer();
 
+      const watermarkImageRatio =
+        Math.round(height * 0.1) / watermarkedImageSize.height;
+
       const positionOptions = {
         southeast: {
           top:
-            imageSize.height * resizeRatio - watermarkedImageSize.height - 50,
-          left: imageSize.width * resizeRatio - watermarkedImageSize.width - 50,
+            imageSize.height * resizeRatio -
+            Math.round(watermarkedImageSize.height * watermarkImageRatio) -
+            40,
+          left:
+            imageSize.width * resizeRatio -
+            Math.round(watermarkedImageSize.width * watermarkImageRatio) -
+            40,
         },
         northwest: {
-          top: 50,
-          left: 50,
+          top: 40,
+          left: 40,
         },
       };
 
