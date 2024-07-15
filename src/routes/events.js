@@ -124,7 +124,11 @@ router.get("/getPhotographers/:eventId", async (req, res) => {
 //get all events
 router.get("/getAllEvents", async (req, res) => {
   const db = req.app.db;
-  const events = await db.collection("eventlistcollection").find({}).toArray();
+  const events = await db
+    .collection("eventlistcollection")
+    .find({})
+    .sort({ date: 1 })
+    .toArray();
 
   res.send(events);
 });
