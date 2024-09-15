@@ -1,4 +1,3 @@
-const UUID = require("uuid");
 const dayjs = require("dayjs");
 const express = require("express");
 const router = express.Router();
@@ -7,6 +6,7 @@ const { sendOrderSuccessEmail } = require("../modules/order/orderModules");
 
 const emailSender = require("../modules/emailSender");
 const { getImageInfoByEventId } = require("../modules/getImageModules");
+const { deleteS3Object } = require("../modules/uploadModules");
 
 const dotenv = require("dotenv");
 dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
@@ -57,35 +57,40 @@ const ImagesUploadEmailNotify = async (email, eventName, notifyUrl) => {
 };
 //get all uploadInfo
 router.get("/getUploadInfo", async (req, res) => {
-  const db = req.app.db;
-  await db
-    .collection(`uploadInfocollection`)
-    .find({})
-    .toArray((error, result) => {
-      //group by same eventId
-      const uploadInfo = result.reduce((acc, item) => {
-        const eventId = item.eventId;
-        if (!acc[eventId]) {
-          acc[eventId] = {
-            eventId,
-            eventName: item.eventName,
-            photographers: [],
-          };
-        }
-        acc[eventId].photographers.push({
-          author: item.author,
-          authorName: item.name,
-          createAt: item.createAt,
-          lastEditTime: item.lastEditTime,
-          soldCount: item.soldCount,
-          soldImages: item.soldImages,
-        });
+  const author = req.headers.authorization.split(" ")[1];
+  if (author === process.env.ADMIN_PP_ID || author === process.env.ADMIN_ID) {
+    const db = req.app.db;
+    await db
+      .collection(`uploadInfocollection`)
+      .find({})
+      .toArray((error, result) => {
+        //group by same eventId
+        const uploadInfo = result.reduce((acc, item) => {
+          const eventId = item.eventId;
+          if (!acc[eventId]) {
+            acc[eventId] = {
+              eventId,
+              eventName: item.eventName,
+              photographers: [],
+            };
+          }
+          acc[eventId].photographers.push({
+            author: item.author,
+            authorName: item.name,
+            createAt: item.createAt,
+            lastEditTime: item.lastEditTime,
+            soldCount: item.soldCount,
+            soldImages: item.soldImages,
+          });
 
-        return acc;
-      }, {});
+          return acc;
+        }, {});
 
-      res.send(Object.values(uploadInfo));
-    });
+        res.send(Object.values(uploadInfo));
+      });
+  } else {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 });
 
 router.post("/getImageInfoByEventId/:eventId", async (req, res) => {
@@ -98,6 +103,7 @@ router.post("/getImageInfoByEventId/:eventId", async (req, res) => {
     featuredLength,
     removeImageLength,
     detectedImageLength,
+    emptyPathImageLength,
   } = await getImageInfoByEventId(db, eventId, author);
 
   res.send({
@@ -105,19 +111,25 @@ router.post("/getImageInfoByEventId/:eventId", async (req, res) => {
     featuredLength,
     removeImageLength,
     detectedImageLength,
+    emptyPathImageLength,
   });
 });
 
 //取得 uploadInfo by eventId
 router.get("/getUploadInfo/:eventId", async (req, res) => {
-  const db = req.app.db;
-  const eventId = req.params.eventId;
-  const uploadInfo = await db
-    .collection(`uploadInfocollection`)
-    .find({ eventId })
-    .toArray();
+  const author = req.headers.authorization.split(" ")[1];
+  if (author === process.env.ADMIN_PP_ID || author === process.env.ADMIN_ID) {
+    const db = req.app.db;
+    const eventId = req.params.eventId;
+    const uploadInfo = await db
+      .collection(`uploadInfocollection`)
+      .find({ eventId })
+      .toArray();
 
-  res.send(uploadInfo);
+    res.send(uploadInfo);
+  } else {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 });
 
 //取得活動上傳完成通知資訊
@@ -258,6 +270,56 @@ router.post("/deleteOrder/:orderId", (req, res) => {
       console.log("delete-error", error);
       return res.json({ message: "刪除失敗" });
     });
+});
+
+router.post("/deleteImages", async (req, res) => {
+  const db = req.app.db;
+  const { eventId } = req.body;
+
+  const image = await db
+    .collection(`imagecollection/${eventId}`)
+    .find({
+      isFeatured: { $ne: true },
+      isSold: { $ne: true },
+    })
+    .toArray();
+
+  if (image.length === 0) {
+    return res.json({ message: "圖片不存在" });
+  } else {
+    const watermarkedKeys = image.map((item) =>
+      decodeURIComponent(
+        item.image.watermarkedUrl.split(process.env.AWS_BUCKET_URL + "/")[1]
+      )
+    );
+
+    const keys = image.map((item) =>
+      decodeURIComponent(
+        item.image.url.split(process.env.AWS_BUCKET_URL + "/")[1]
+      )
+    );
+
+    const deleteFromS3 = async () => {
+      const deleteS3Promise = keys.map(
+        async (key) => await deleteS3Object(key)
+      );
+
+      const deleteWatermarkedS3Promise = watermarkedKeys.map(
+        async (key) => await deleteS3Object(key)
+      );
+
+      await Promise.all([...deleteS3Promise, ...deleteWatermarkedS3Promise]);
+    };
+    //if delete from s3 success, then delete from db
+    await deleteFromS3();
+    //delete from db
+    await db.collection(`imagecollection/${eventId}`).deleteMany({
+      isFeatured: { $ne: true },
+      isSold: { $ne: true },
+    });
+  }
+
+  res.json({ message: "刪除成功" });
 });
 
 module.exports = router;

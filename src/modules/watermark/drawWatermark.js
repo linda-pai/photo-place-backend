@@ -11,7 +11,7 @@ async function compositeImages(bucketKey) {
         .rotate()
         .resize({
           width: 1500,
-          withoutEnlargement: true,
+          withoutEnlargement: true, //如果原始圖片小於目標尺寸，則不放大
           fit: "outside",
         })
         .jpeg({ quality: 75 }) //壓縮
@@ -30,7 +30,13 @@ async function compositeImages(bucketKey) {
   }
 }
 
-async function compositeFeaturedImages(bucketKey, watermarkedImage, position) {
+async function compositeFeaturedImages(
+  bucketKey,
+  watermarkedImage,
+  position,
+  orientation,
+  opacity
+) {
   const watermark = await getS3Object(watermarkedImage);
 
   const watermarkedBuffer = watermark.Body;
@@ -43,53 +49,67 @@ async function compositeFeaturedImages(bucketKey, watermarkedImage, position) {
       };
     });
 
-  const watermarkedWithOpacity = await sharp(watermarkedBuffer)
-    // .resize({
-    //   width: 1500,
-    // })
-    .toFormat("png")
-    .composite([
-      {
-        input: Buffer.from([0, 0, 0, 100]),
-        raw: {
-          width: 1,
-          height: 1,
-          channels: 4,
-        },
-        tile: true,
-        blend: "dest-in",
-      },
-    ])
-    .toBuffer();
-
   try {
     return getS3Object(bucketKey).then(async (data) => {
       const imageSize = await sharp(data.Body)
         .metadata()
         .then((metadata) => {
-          return {
-            width: metadata.width,
-            height: metadata.height,
-          };
+          const { width, height } = metadata;
+
+          if (orientation === "horizontal") {
+            return {
+              width: width,
+              height: height,
+            };
+          } else {
+            return {
+              width: height,
+              height: width,
+            };
+          }
         });
 
-      const width = 1500;
-      const resizeRatio = width / imageSize.width;
+      const height = 2250;
+      const resizeRatio = height / imageSize.height;
+
+      const watermarkedWithOpacity = await sharp(watermarkedBuffer)
+        .resize({
+          //height 佔照片height 1/10
+          height: Math.round(height * 0.1),
+          fit: "outside",
+        })
+        .toFormat("png")
+        .composite([
+          {
+            input: Buffer.from([0, 0, 0, Math.round(opacity * 0.01 * 255)]), //0-255, 0:完全透明, 255:完全不透明, 128:50%透明
+            raw: {
+              width: 1,
+              height: 1,
+              channels: 4,
+            },
+            tile: true,
+            blend: "dest-in",
+          },
+        ])
+        .toBuffer();
+
+      const watermarkImageRatio =
+        Math.round(height * 0.1) / watermarkedImageSize.height;
 
       const positionOptions = {
         southeast: {
           top:
-            Math.round(imageSize.width * resizeRatio) +
-            Math.round(watermarkedImageSize.height / resizeRatio) -
-            100,
+            imageSize.height * resizeRatio -
+            Math.round(watermarkedImageSize.height * watermarkImageRatio) -
+            40,
           left:
-            Math.round(imageSize.height * resizeRatio) -
-            Math.round(watermarkedImageSize.width * resizeRatio) -
-            100,
+            imageSize.width * resizeRatio -
+            Math.round(watermarkedImageSize.width * watermarkImageRatio) -
+            40,
         },
         northwest: {
-          top: 50,
-          left: 50,
+          top: 40,
+          left: 40,
         },
       };
 
@@ -123,13 +143,17 @@ const getWatermarkedFeaturedImageUrl = async ({
   position,
   path,
   fileName,
+  orientation,
+  opacity,
 }) => {
   return new Promise(async (resolve, reject) => {
     try {
       const watermarkedImage = await compositeFeaturedImages(
         bucketKey,
         watermarkedImageUrl,
-        position || "southeast"
+        position || "southeast",
+        orientation,
+        opacity
       );
 
       const result = await uploadToS3(

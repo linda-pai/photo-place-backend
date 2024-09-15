@@ -121,4 +121,16 @@ router.get("/getPhotographers/:eventId", async (req, res) => {
   res.send(photographers);
 });
 
+//get all events
+router.get("/getAllEvents", async (req, res) => {
+  const db = req.app.db;
+  const events = await db
+    .collection("eventlistcollection")
+    .find({})
+    .sort({ date: 1 })
+    .toArray();
+
+  res.send(events);
+});
+
 module.exports = router;

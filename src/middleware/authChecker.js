@@ -13,6 +13,8 @@ function authChecker(req, res, next) {
     return res.status(401).json({ error: "Unauthorized" });
   } else if (secret === sha256(token + process.env.SALT)) {
     next();
+  } else {
+    return res.status(401).json({ error: "Unauthorized" });
   }
 }
 

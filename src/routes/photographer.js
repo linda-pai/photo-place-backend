@@ -1,10 +1,13 @@
 const express = require("express");
 const router = express.Router();
+const dotenv = require("dotenv");
+dotenv.config({ path: `.env.${process.env.NODE_ENV}` });
 
 const {
   getWatermarkedFeaturedImageUrl,
 } = require("../modules/watermark/drawWatermark");
 const { getImageInfoByEventId } = require("../modules/getImageModules");
+const { REMOVE_IMAGE_STATUS } = require("../lib/constants");
 
 const getDetectedImageLength = async (db, eventId, author) => {
   const detectedImageLength = await db
@@ -17,9 +20,9 @@ const getDetectedImageLength = async (db, eventId, author) => {
 };
 
 //查詢上傳資訊 by author
-router.get("/getUploadInfo/:author", async (req, res) => {
+router.post("/getUploadInfo", async (req, res) => {
   const db = req.app.db;
-  const author = req.params.author;
+  const author = req.headers.authorization.split(" ")[1];
 
   await db
     .collection(`uploadInfocollection`)
@@ -36,6 +39,7 @@ router.get("/getUploadInfo/:author", async (req, res) => {
             removeImageLength,
             detectedImageLength,
             emptyPathImageLength,
+            reportedImageLength,
           } = await getImageInfoByEventId(db, eventId, author);
 
           item.allImageLength = allImageLength || 0;
@@ -43,6 +47,7 @@ router.get("/getUploadInfo/:author", async (req, res) => {
           item.removeImageLength = removeImageLength || 0;
           item.detectedImageLength = detectedImageLength || 0;
           item.emptyPathImageLength = emptyPathImageLength || 0;
+          item.reportedImageLength = reportedImageLength || 0;
 
           return item;
         })
@@ -64,6 +69,7 @@ router.get("/getDetectedImageLength/:eventId/:author", async (req, res) => {
 //取得攝影師常用浮水印
 router.get("/getWatermark/:author", async (req, res) => {
   const author = req.params.author;
+  const db = req.app.db;
   const watermark = await db
     .collection(`photographercollection`)
     .find({ author })
@@ -72,7 +78,7 @@ router.get("/getWatermark/:author", async (req, res) => {
 });
 
 //紀錄攝影師常用浮水印
-router.post("/watermark", async (req, res) => {
+router.post("/uploadWatermark", async (req, res) => {
   //watermarkImg 寫入 author
   const db = req.app.db;
   const { watermarkImg, author } = req.body;
@@ -84,23 +90,35 @@ router.post("/watermark", async (req, res) => {
 });
 
 //精選照片添加浮水印
-router.post("/addFeaturedImageWatermark", async (req, res) => {
+router.post("/generateWatermark", async (req, res) => {
   const db = req.app.db;
-  const { images, watermarkImg, position } = req.body;
+  const { images, eventId, watermarkImg, position, opacity } = req.body;
 
   const promises = images.map(async (image) => {
+    const imageInfo = await db
+      .collection(`imagecollection/${eventId}`)
+      .find({ "image.watermarkedUrl": image })
+      .project({ "image.url": 1, "image.orientation": 1, "image.fileName": 1 })
+      .toArray();
+
+    const { url, fileName, orientation } = imageInfo[0].image;
+
     const { watermarkedUrl } = await getWatermarkedFeaturedImageUrl({
-      bucketKey: image.url.split(process.env.AWS_BUCKET_URL + "/")[1],
+      bucketKey: decodeURIComponent(
+        url.split(process.env.AWS_BUCKET_URL + "/")[1]
+      ),
       watermarkedImageUrl: watermarkImg.split(
         process.env.AWS_BUCKET_URL + "/"
       )[1],
-      position: position,
-      path: "/" + image.eventId + "/featured-watermark/",
-      fileName: image.fileName,
+      position,
+      fileName,
+      orientation,
+      opacity,
+      path: "/" + eventId + "/featured-watermark/",
     });
 
-    await db.collection(`imagecollection/${image.eventId}`).updateOne(
-      { "image.id": image.id },
+    await db.collection(`imagecollection/${eventId}`).updateOne(
+      { "image.watermarkedUrl": image },
       {
         $set: {
           "image.featuredWatermarkedUrl": watermarkedUrl,
@@ -120,9 +138,10 @@ router.post("/addFeaturedImageWatermark", async (req, res) => {
 });
 
 //精選照片取得添加浮水印的網址
-router.get("/getFeaturedWatermarkImages/:eventId/:author", async (req, res) => {
+router.post("/getFeaturedWatermarkImages", async (req, res) => {
   const db = req.app.db;
-  const { author, eventId } = req.params;
+  const author = req.headers.authorization.split(" ")[1];
+  const { eventId, imageList } = req.body;
   db.collection(`imagecollection/${eventId}`)
     .aggregate([
       {
@@ -133,6 +152,7 @@ router.get("/getFeaturedWatermarkImages/:eventId/:author", async (req, res) => {
           "image.author": author,
           isFeatured: true,
           "image.featuredWatermarkedUrl": { $exists: true },
+          "image.watermarkedUrl": { $in: imageList },
         },
       },
     ])
@@ -154,9 +174,25 @@ router.get("/getFeaturedWatermarkImages/:eventId/:author", async (req, res) => {
     });
 });
 
-router.get("/getSoldInfoByAuthor/:eventId/:author", async (req, res) => {
+//刪除精選照片浮水印
+router.post("/deleteWatermark", async (req, res) => {
   const db = req.app.db;
-  const { eventId, author } = req.params;
+  const { watermark } = req.body;
+  const author = req.headers.authorization.split(" ")[1];
+
+  await db
+    .collection(`photographercollection`)
+    .deleteOne({ watermarkImg: watermark, author })
+    .then(() => {
+      res.json({ message: "刪除成功" });
+    });
+});
+
+router.post("/getSoldInfoByAuthor/:eventId", async (req, res) => {
+  const db = req.app.db;
+  const { eventId } = req.params;
+
+  const author = req.headers.authorization.split(" ")[1];
 
   await db
     .collection(`uploadInfocollection`)
@@ -187,7 +223,21 @@ router.get("/getSoldInfoByAuthor/:eventId/:author", async (req, res) => {
 //photographer/* 用的，要有 :author 才能查詢
 router.post("/getByAuthor", async (req, res) => {
   const db = req.app.db;
-  const { eventId, author, sorting, fileName, curPage, isEmptyPath } = req.body;
+  const {
+    eventId,
+    authorQuery,
+    lastModifiedSorting,
+    detectLengthSorting,
+    fileName,
+    curPage,
+    isEmptyPath,
+  } = req.body;
+
+  const author =
+    req.headers.authorization.split(" ")[1] === process.env.ADMIN_PP_ID
+      ? authorQuery
+      : req.headers.authorization.split(" ")[1];
+
   const countsPerPage = 24;
   const page = curPage - 1 || 0;
 
@@ -248,7 +298,15 @@ router.post("/getByAuthor", async (req, res) => {
         },
       },
       {
-        $sort: { [`image.lastModified`]: sorting === "asc" ? 1 : -1 },
+        //sorting by image pathCount and lastModified
+        $sort: {
+          ...(detectLengthSorting && {
+            "image.pathCount": detectLengthSorting === "asc" ? 1 : -1,
+          }),
+          ...(lastModifiedSorting && {
+            "image.lastModified": lastModifiedSorting === "asc" ? 1 : -1,
+          }),
+        },
       },
       {
         $facet: {
@@ -318,8 +376,9 @@ router.get("/getByStatus/:eventId/:author", async (req, res) => {
   const db = req.app.db;
   const { eventId, author } = req.params;
   const status = req.query.status;
-  const isFeatured = status === "featured";
-  const isRemoved = status === "removed";
+  const isFeatured = status === REMOVE_IMAGE_STATUS.FEATURED;
+  const isRemoved = status === REMOVE_IMAGE_STATUS.REMOVE;
+  const isReported = status === REMOVE_IMAGE_STATUS.REPORTED;
 
   const page = req.query.page - 1 || 0;
   const countsPerPage = 24;
@@ -335,6 +394,7 @@ router.get("/getByStatus/:eventId/:author", async (req, res) => {
           "image.author": author,
           ...(isFeatured && { isFeatured: true }),
           ...(isRemoved && { isRemoved: true }),
+          ...(isReported && { isReported: true }),
         },
       },
       {
@@ -342,6 +402,7 @@ router.get("/getByStatus/:eventId/:author", async (req, res) => {
           image: 1,
           ...(isFeatured && { isFeatured: 1 }),
           ...(isRemoved && { isRemoved: 1 }),
+          ...(isReported && { isReported: 1, isRemoved: 1 }),
         },
       },
       {
@@ -360,6 +421,7 @@ router.get("/getByStatus/:eventId/:author", async (req, res) => {
               pathCount: "$pathCount",
               isFeatured: "$isFeatured",
               isRemoved: "$isRemoved",
+              isReported: "$isReported",
               orientation: {
                 $ifNull: ["$image.orientation", "vertical"],
               },

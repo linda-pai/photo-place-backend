@@ -33,12 +33,20 @@ const getImageInfoByEventId = async (db, eventId, author) => {
       path: { $size: 0 },
     });
 
+  const reportedImageLength = await db
+    .collection(`imagecollection/${eventId}`)
+    .countDocuments({
+      "image.author": author,
+      isReported: true,
+    });
+
   return {
     allImageLength: allImageLength || 0,
     featuredLength: featuredLength || 0,
     removeImageLength: removeImageLength || 0,
     detectedImageLength: detectedImageLength || 0,
     emptyPathImageLength: emptyPathImageLength || 0,
+    reportedImageLength: reportedImageLength || 0,
   };
 };
 

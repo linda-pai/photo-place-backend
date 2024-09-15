@@ -12,6 +12,7 @@ const cmsRouter = require("./src/routes/cms");
 const newebpayRouter = require("./src/routes/newebpay");
 const linepayRouter = require("./src/routes/linepay");
 const orderRouter = require("./src/routes/orders");
+const mongodbRouter = require("./src/routes/mongoDB");
 // const roleRouter = require("./src/routes/roles");
 const authChecker = require("./src/middleware/authChecker");
 const adminChecker = require("./src/middleware/adminChecker");
@@ -73,6 +74,7 @@ if (cluster.isMaster) {
   app.use(`${apiRoot}/cms`, adminChecker, cmsRouter);
   app.use(`${apiRoot}/orders`, authChecker, orderRouter);
   app.use(`${apiRoot}/photographer`, authChecker, photographerRouter);
+  app.use(`${apiRoot}/mongodb`, mongodbRouter);
   // app.use(`${apiRoot}/roles`, authChecker, roleRouter);
 
   var db;

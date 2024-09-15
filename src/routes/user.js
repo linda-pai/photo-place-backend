@@ -4,6 +4,9 @@ const dayjs = require("dayjs");
 const express = require("express");
 const router = express.Router();
 
+const emailSender = require("../modules/emailSender");
+const { REPORT_TYPE_TRANS } = require("../lib/constants");
+
 router.post("/createUser", async (req, res) => {
   const db = req.app.db;
   const userId = req.body.userId || "user-" + UUID.v4().substring(0, 12);
@@ -50,6 +53,52 @@ router.post("/notifyRecord", async (req, res) => {
     });
     res.send({ status: 200, msg: "登記成功" });
   }
+});
+
+router.post("/reportImage", async (req, res) => {
+  const db = req.app.db;
+  const { eventId, imageId } = req.body;
+
+  const reportInfo = {
+    reportId: "report-" + UUID.v4().substring(0, 12),
+    reportAt: dayjs().utcOffset(8).format("YYYY-MM-DD HH:mm:ss"),
+    ...req.body,
+  };
+
+  //1.移除圖片並標記為已檢舉
+  await db.collection(`imagecollection/${eventId}`).updateOne(
+    { "image.id": imageId },
+    {
+      $set: {
+        isReported: true,
+        isRemoved: true,
+        reportInfo,
+      },
+    }
+  );
+
+  //2.新增檢舉紀錄
+  await db.collection(`reportcollection`).insertOne(reportInfo);
+
+  //3.email 通知管理員
+  await emailSender({
+    email: process.env.MAILER_FROM_USER,
+    subject: "圖片檢舉通知",
+    html: `
+      <h1>圖片檢舉通知</h1>
+      <p>圖片已被檢舉，請至後台查看</p>
+      <p>檢舉ID：${reportInfo.reportId}</p>
+      <p>檢舉人：${reportInfo.reporterId}</p>
+      <p>檢舉原因：${REPORT_TYPE_TRANS[reportInfo.reportType]}</p>
+      <p>檢舉圖片ID：${reportInfo.imageId}</p>
+      <p>檢舉圖片URL：${reportInfo.watermarkedUrl}</p>
+      <p>檢舉圖片活動ID：${reportInfo.eventId}</p>
+      <p>檢舉圖片活動：${reportInfo.eventName}</p>
+
+    `,
+  });
+
+  res.send({ status: "success", msg: "檢舉成功" });
 });
 
 module.exports = router;

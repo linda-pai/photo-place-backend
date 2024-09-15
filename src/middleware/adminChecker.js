@@ -14,6 +14,8 @@ function adminChecker(req, res, next) {
     return res.status(401).json({ error: "Unauthorized" });
   } else if (cryptedAdminList.includes(secret)) {
     next();
+  } else {
+    return res.status(401).json({ error: "Unauthorized" });
   }
 }
 

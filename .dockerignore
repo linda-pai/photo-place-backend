@@ -1,5 +1,21 @@
-node_modules
+# 排除不需要复制到 Docker 镜像中的文件和目录
 Dockerfile
 .dockerignore
+
+# 忽略版本控制相关文件
 .git
 .gitignore
+
+# 忽略开发环境相关文件
+node_modules
+npm-debug.log
+yarn-error.log
+
+
+# 忽略编辑器配置和临时文件
+.vscode
+.idea
+*.sublime-workspace
+*.sublime-project
+
+
