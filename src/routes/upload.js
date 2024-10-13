@@ -203,4 +203,42 @@ router.post("/complete-upload", async (req, res, next) => {
   }
 });
 
+//write uploaded info progress
+router.post("/write-upload-progress", async (req, res) => {
+  const db = req.app.db;
+  const { eventId, author } = req.body;
+
+  //if author and eventId is not exist in uploadInfocollection
+  db.collection(`uploadInfocollection`)
+    .find({ author, eventId })
+    .toArray((error, result) => {
+      //update images and lastEditTime
+      db.collection(`uploadInfocollection`).updateOne(
+        { author, eventId },
+        {
+          $set: {
+            progress: req.body.progress,
+          },
+        }
+      );
+      res.json({ message: "新增成功" });
+    });
+});
+
+//get upload progress
+router.get("/get-upload-progress", async (req, res) => {
+  const db = req.app.db;
+  const { eventId, author } = req.query;
+
+  db.collection(`uploadInfocollection`)
+    .find({ author, eventId })
+    .toArray((error, result) => {
+      if (result.length > 0) {
+        res.json({ progress: result[0].progress });
+      } else {
+        res.json({ progress: 0 });
+      }
+    });
+});
+
 module.exports = router;
