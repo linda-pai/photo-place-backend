@@ -65,7 +65,7 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
                   ? dayjs(lastModifiedArray?.[1])
                       .tz("Asia/Taipei", true)
                       .valueOf()
-                  : dayjs().tz("Asia/Taipei", true).valueOf(),
+                  : dayjs().tz("Asia/Taipei", true).add(1, "day").valueOf(),
               },
             },
             {
