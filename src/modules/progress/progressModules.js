@@ -21,8 +21,6 @@ const writeUploadInfo = async (res, db, data) => {
     createAt: TimeStamp,
   }));
 
-  //if author and eventId is not exist in uploadInfocollection
-
   db.collection(`progresscollection`)
     .insertMany(uploadInfo)
     .then(() => {
