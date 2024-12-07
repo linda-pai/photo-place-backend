@@ -12,6 +12,7 @@ const cmsRouter = require("./src/routes/cms");
 const newebpayRouter = require("./src/routes/newebpay");
 const linepayRouter = require("./src/routes/linepay");
 const orderRouter = require("./src/routes/orders");
+const progressRouter = require("./src/routes/progress");
 const mongodbRouter = require("./src/routes/mongoDB");
 // const roleRouter = require("./src/routes/roles");
 const authChecker = require("./src/middleware/authChecker");
@@ -71,6 +72,7 @@ if (cluster.isMaster) {
   app.use(`${apiRoot}/events`, eventRouter);
   app.use(`${apiRoot}/newebpay`, newebpayRouter);
   app.use(`${apiRoot}/linepay`, linepayRouter);
+  app.use(`${apiRoot}/progress`, progressRouter);
   app.use(`${apiRoot}/cms`, adminChecker, cmsRouter);
   app.use(`${apiRoot}/orders`, authChecker, orderRouter);
   app.use(`${apiRoot}/photographer`, authChecker, photographerRouter);
