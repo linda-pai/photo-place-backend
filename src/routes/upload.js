@@ -13,6 +13,10 @@ const {
   createMultipartUpload,
   completeMultipartUpload,
 } = require("../modules/uploadModules");
+const {
+  writeUploadInfo,
+  updateUploadInfo,
+} = require("../modules/progress/progressModules");
 
 //1. detectText  2. drawWatermark  3. uploadToS3 by bucketKey
 router.post("/addWatermark", async (req, res) => {
@@ -196,6 +200,7 @@ router.post("/complete-upload", async (req, res, next) => {
       });
     }
 
+    await updateUploadInfo(db, uploadData);
     res.send({ data: completeUploadPromised });
   } catch (err) {
     console.log("complete-upload", err);
@@ -206,39 +211,18 @@ router.post("/complete-upload", async (req, res, next) => {
 //write uploaded info progress
 router.post("/write-upload-progress", async (req, res) => {
   const db = req.app.db;
-  const { eventId, author } = req.body;
-
-  //if author and eventId is not exist in uploadInfocollection
-  db.collection(`uploadInfocollection`)
-    .find({ author, eventId })
-    .toArray((error, result) => {
-      //update images and lastEditTime
-      db.collection(`uploadInfocollection`).updateOne(
-        { author, eventId },
-        {
-          $set: {
-            progress: req.body.progress,
-          },
-        }
-      );
-      res.json({ message: "新增成功" });
-    });
+  await writeUploadInfo(res, db, req.body);
 });
 
-//get upload progress
-router.get("/get-upload-progress", async (req, res) => {
+//remove uploaded info progress
+router.post("/remove-upload-progress", async (req, res) => {
   const db = req.app.db;
-  const { eventId, author } = req.query;
+  const { eventId, author, fileList } = req.body;
+  const { path } = fileList;
 
-  db.collection(`uploadInfocollection`)
-    .find({ author, eventId })
-    .toArray((error, result) => {
-      if (result.length > 0) {
-        res.json({ progress: result[0].progress });
-      } else {
-        res.json({ progress: 0 });
-      }
-    });
+  db.collection(`progresscollection`)
+    .deleteOne({ eventId, author, path })
+    .then(() => res.json({ message: "刪除成功" }));
 });
 
 module.exports = router;
