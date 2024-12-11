@@ -7,6 +7,9 @@ const {
   getWatermarkedFeaturedImageUrl,
 } = require("../modules/watermark/drawWatermark");
 const { getImageInfoByEventId } = require("../modules/getImageModules");
+const {
+  getAuthorNameById,
+} = require("../modules/photographer/photographerModules");
 const { REMOVE_IMAGE_STATUS } = require("../lib/constants");
 
 const getDetectedImageLength = async (db, eventId, author) => {
@@ -469,12 +472,8 @@ router.post("/setDisplayName", async (req, res) => {
 router.get("/getDisplayName/:author", async (req, res) => {
   const db = req.app.db;
   const author = req.params.author;
-  const displayName = await db
-    .collection(`photographercollection`)
-    .find({ author })
-    .project({ displayName: 1 })
-    .toArray();
-  res.send(displayName[0]);
+  const displayName = await getAuthorNameById(db, author);
+  res.send(displayName);
 });
 
 module.exports = router;

@@ -5,6 +5,9 @@ const UUID = require("uuid");
 const dayjs = require("dayjs");
 
 const { multerUploader } = require("../modules/uploadModules");
+const {
+  getAuthorNameById,
+} = require("../modules/photographer/photographerModules");
 
 //查詢 events
 router.get("/eventList", (req, res) => {
@@ -112,13 +115,31 @@ router.post("/add", multerUploader.single("file"), async (req, res) => {
 router.get("/getPhotographers/:eventId", async (req, res) => {
   const db = req.app.db;
   const eventId = req.params.eventId;
-  const photographers = await db
-    .collection(`uploadInfocollection`)
-    .find({ eventId })
-    .project({ author: 1, name: 1, email: 1, userId: 1 })
-    .toArray();
 
-  res.send(photographers);
+  try {
+    // 查詢符合 eventId 的資料
+    const result = await db
+      .collection("uploadInfocollection")
+      .find({ eventId })
+      .project({ author: 1, email: 1, userId: 1 })
+      .toArray();
+
+    // 處理每個 photographer 的 authorName
+    const photographers = await Promise.all(
+      result.map(async (item) => {
+        const authorData = await getAuthorNameById(db, item.author);
+        return {
+          ...item,
+          name: authorData?.displayName || "Unknown", // 使用 displayName 作為 authorName，預設為 'Unknown'
+        };
+      })
+    );
+
+    res.send(photographers);
+  } catch (error) {
+    console.error("Error fetching photographers:", error);
+    res.status(500).send({ message: "Failed to fetch photographers", error });
+  }
 });
 
 //get all events

@@ -12,20 +12,32 @@ const writeUploadInfo = async (res, db, data) => {
     .find({ eventId })
     .toArray();
 
-  const uploadInfo = fileList.map((item) => ({
-    ...item,
-    eventId,
-    author,
-    date: eventDate[0]?.date,
-    uploaded: false,
-    createAt: TimeStamp,
-  }));
+  const existingFiles = await db
+    .collection("progresscollection")
+    .find({ eventId, author, path: { $in: fileList.map((item) => item.path) } })
+    .toArray();
 
-  db.collection(`progresscollection`)
-    .insertMany(uploadInfo)
-    .then(() => {
-      res.json({ message: "新增成功" });
-    });
+  const existingFileNames = new Set(existingFiles.map((file) => file.path));
+
+  // 過濾掉已存在的檔案
+  const newUploadInfo = fileList
+    .filter((item) => !existingFileNames.has(item.path))
+    .map((item) => ({
+      ...item,
+      eventId,
+      author,
+      date: eventDate,
+      uploaded: false,
+      createAt: TimeStamp,
+    }));
+
+  if (newUploadInfo.length === 0) {
+    return res.json({ message: "沒有新檔案需要新增" });
+  }
+
+  // 插入新的檔案資訊
+  await db.collection("progresscollection").insertMany(newUploadInfo);
+  res.json({ message: "新增成功" });
 };
 
 //當上傳完成後，更新上傳資訊
