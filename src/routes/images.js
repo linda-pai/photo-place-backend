@@ -57,7 +57,7 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
         return { isFeatured: true };
       case IMAGE_STATUS.ALL:
         return path
-          ? { path: { $elemMatch: { $regex: new RegExp(".*" + path + ".*") } } }
+          ? { path: { $elemMatch: { $regex: new RegExp(path, "i") } } }
           : {};
       default:
         return {};
@@ -65,55 +65,65 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
   };
 
   try {
-    const result = await db
-      .collection(`imagecollection/${eventId}`)
-      .aggregate([
-        { $unwind: "$image" },
-        {
-          $match: {
-            ...lastModifiedCondition,
-            ...matchCategoryCondition(),
-            "image.author": author || { $ne: "" },
-            "image.watermarkedUrl": { $exists: true },
-            isRemoved: { $ne: true },
-          },
+    const pipeline = [
+      { $unwind: "$image" },
+      {
+        $match: {
+          ...lastModifiedCondition,
+          ...matchCategoryCondition(),
+          "image.author": author || { $ne: "" },
+          "image.watermarkedUrl": { $exists: true },
+          isRemoved: { $ne: true },
         },
-        {
-          $group: {
-            _id: "$_id",
-            image: {
-              $push: {
-                id: "$image.id",
-                watermarkedUrl: "$image.watermarkedUrl",
-                price: "$image.price",
-                lastModified: "$image.lastModified",
-                author: "$image.author",
-                orientation: {
-                  $ifNull: ["$image.orientation", "vertical"],
+      },
+      {
+        $facet: {
+          paginatedResults: [
+            {
+              $group: {
+                _id: "$_id",
+                image: {
+                  $push: {
+                    id: "$image.id",
+                    watermarkedUrl: "$image.watermarkedUrl",
+                    price: "$image.price",
+                    lastModified: "$image.lastModified",
+                    author: "$image.author",
+                    orientation: {
+                      $ifNull: ["$image.orientation", "vertical"],
+                    },
+                  },
                 },
               },
             },
-          },
+            { $sort: { "image.lastModified": 1 } },
+            { $skip: (page - 1) * countsPerPage },
+            { $limit: countsPerPage },
+          ],
+          totalCount: [
+            {
+              $group: {
+                _id: null,
+                count: { $sum: 1 },
+              },
+            },
+          ],
         },
-        { $sort: { "image.lastModified": 1 } },
-        {
-          $facet: {
-            paginatedResults: [
-              { $skip: (page - 1) * countsPerPage },
-              { $limit: countsPerPage },
-            ],
-            totalCount: [{ $count: "count" }],
-          },
-        },
-      ])
+      },
+    ];
+
+    const result = await db
+      .collection(`imagecollection/${eventId}`)
+      .aggregate(pipeline)
       .toArray();
 
-    const images = result?.[0]?.paginatedResults
-      ? result[0].paginatedResults.flatMap((item) => item.image)
-      : [];
+    const paginatedResults =
+      result?.[0]?.paginatedResults?.flatMap((item) => item.image) || [];
+    const totalCount = result?.[0]?.totalCount?.[0]?.count || 0;
 
+    // 格式化圖像資料
     const formattedImages = await Promise.all(
-      images.map(async (item) => {
+      paginatedResults.map(async (item) => {
         const authorData = await getAuthorNameById(db, item.author);
         return {
           ...item,
@@ -122,7 +132,6 @@ router.get("/getByPathAndEventId/:eventId", async (req, res) => {
       })
     );
 
-    const totalCount = result?.[0]?.totalCount?.[0]?.count || 0;
     res.send({ images: formattedImages, totalCount });
   } catch (error) {
     console.error("Error fetching images:", error);
